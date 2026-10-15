@@ -152,13 +152,14 @@ void main() {
     });
     addTearDown(client.dispose);
     final robot = await openPage(tester, client);
-    expect(find.text('Every 10 s'), findsOneWidget);
     expect(find.text('Queue: 3 of 50 frames waiting'), findsOneWidget);
     expect(find.textContaining('waited 14 s'), findsOneWidget);
 
+    // further down the column, built once scrolled to
     final slider = find.byKey(const ValueKey('interval-slider'));
     await tester.scrollUntilVisible(slider, 80, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
+    expect(find.text('Every 10 s'), findsOneWidget);
     await tester.drag(slider, const Offset(60, 0));
     await tester.pumpAndSettle();
     final sent = robot.sent['inspection_set']!['interval'] as double;
