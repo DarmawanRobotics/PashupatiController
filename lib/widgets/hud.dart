@@ -45,6 +45,7 @@ class HudButton extends StatelessWidget {
     this.tint = Palette.text,
     this.active = false,
     this.busy = false,
+    this.iconAngle = 0,
   });
 
   final IconData icon;
@@ -54,6 +55,9 @@ class HudButton extends StatelessWidget {
   final Color tint;
   final bool active;
   final bool busy;
+
+  /// Turn of the icon, radians clockwise (a compass needle).
+  final double iconAngle;
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +87,10 @@ class HudButton extends StatelessWidget {
                         dimension: size * 0.4,
                         child: CircularProgressIndicator(strokeWidth: 2, color: tint),
                       )
-                    : Icon(icon, size: size * 0.48, color: tint),
+                    : Transform.rotate(
+                        angle: iconAngle,
+                        child: Icon(icon, size: size * 0.48, color: tint),
+                      ),
               ),
             ),
           ),

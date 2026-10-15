@@ -19,6 +19,9 @@ enum MapMode {
   free,
 }
 
+/// [angle] in (-pi, pi].
+double wrapAngle(double angle) => math.atan2(math.sin(angle), math.cos(angle));
+
 /// The map's view, shared by the big and the small map and the buttons under the small one.
 class MapViewport extends ChangeNotifier {
   static const minSpan = 2.0;
@@ -27,6 +30,8 @@ class MapViewport extends ChangeNotifier {
   MapMode _mode = MapMode.fit;
   Offset _center = Offset.zero;
   double _span = 12;
+  double _rotation = 0;
+  bool _headingUp = false;
 
   MapMode get mode => _mode;
 
@@ -36,22 +41,47 @@ class MapViewport extends ChangeNotifier {
   /// Metres across the shorter side of the view (follow and free mode).
   double get span => _span;
 
+  /// The map turned by hand, radians counter-clockwise; 0 is north up (map y up, x right).
+  double get rotation => _rotation;
+
+  /// The map turns with the robot, which then always drives up the screen.
+  bool get headingUp => _headingUp;
+
+  /// The turn of the map on screen while the robot heads [yaw] (map frame).
+  double rotationFor(double? yaw) =>
+      _headingUp && yaw != null ? wrapAngle(math.pi / 2 - yaw) : _rotation;
+
   static double clampSpan(double span) => math.min(maxSpan, math.max(minSpan, span));
 
-  void fit() => _set(MapMode.fit, _center, _span);
+  void fit() => _set(MapMode.fit, _center, _span, headingUp: false);
 
   void follow() => _set(MapMode.follow, _center, _span);
 
-  /// Zoom while following the robot.
-  void zoom(double span) => _set(MapMode.follow, _center, span);
+  /// Zoom (and turn) while following the robot.
+  void zoom(double span, {double? rotation}) => _set(
+    MapMode.follow,
+    _center,
+    span,
+    rotation: rotation,
+    headingUp: rotation == null ? null : false,
+  );
 
-  /// Show [center] with [span] metres across the shorter side.
-  void moveTo(Offset center, double span) => _set(MapMode.free, center, span);
+  /// Show [center] with [span] metres across the shorter side, turned by [rotation].
+  void moveTo(Offset center, double span, double rotation) =>
+      _set(MapMode.free, center, span, rotation: rotation, headingUp: false);
 
-  void _set(MapMode mode, Offset center, double span) {
+  /// North up again.
+  void northUp() => _set(_mode, _center, _span, rotation: 0, headingUp: false);
+
+  /// Follow the robot with its heading up.
+  void trackHeading() => _set(MapMode.follow, _center, _span, headingUp: true);
+
+  void _set(MapMode mode, Offset center, double span, {double? rotation, bool? headingUp}) {
     _mode = mode;
     _center = center;
     _span = clampSpan(span);
+    if (rotation != null) _rotation = wrapAngle(rotation);
+    if (headingUp != null) _headingUp = headingUp;
     notifyListeners();
   }
 }
@@ -59,8 +89,9 @@ class MapViewport extends ChangeNotifier {
 /// Top-down map in the map frame: the loaded route with its waypoints and stop points, where the
 /// robot has been, the lidar returns and the robot itself.
 ///
-/// The big map zooms with a pinch and moves with a drag; a double tap follows the robot again.
-/// The small one only shows. Without a pose (not localized) it shows the lidar around the robot.
+/// The big map zooms with a pinch, moves with a drag and turns with a two-finger twist (nearly
+/// north snaps north); a double tap follows the robot again. The small one only shows. Without a
+/// pose (not localized) it shows the lidar around the robot, which looks up the screen.
 class MapView extends StatefulWidget {
   const MapView({
     super.key,
@@ -99,10 +130,21 @@ class _MapViewState extends State<MapView> {
   late Listenable _changes = _merge();
   Size _size = Size.zero;
 
-  // where a pinch or drag started
+  /// Twist of the fingers before the map starts turning, and the turn that snaps north.
+  static const _twistThreshold = 0.2;
+  static const _snapNorth = 0.12;
+
+  // the gesture: where it started, the view then, and the map point held under the fingers
   Offset _startFocal = Offset.zero;
-  Offset _startCenter = Offset.zero;
-  double _startScale = 1;
+  double _baseScale = 1;
+  double _baseRotation = 0;
+  Offset _anchor = Offset.zero;
+
+  /// Pinching and twisting around the followed robot, until the fingers move away.
+  bool _aroundRobot = false;
+
+  /// Finger twist when the map started turning in this gesture; null while it does not turn.
+  double? _twistFrom;
 
   Listenable _merge() => Listenable.merge([widget.viewport, widget.points, widget.route]);
 
@@ -116,26 +158,32 @@ class _MapViewState extends State<MapView> {
     }
   }
 
-  /// Middle of the view (map metres) and pixels per metre.
-  ({Offset center, double scale}) _view() {
+  /// Middle of the view (map metres), pixels per metre and the turn of the map on screen.
+  ({Offset center, double scale, double rotation}) _view() {
     final viewport = widget.viewport;
     final shorter = math.max(1.0, _size.shortestSide);
     final pose = widget.pose;
-    if (pose == null) return (center: Offset.zero, scale: shorter / viewport.span);
+    if (pose == null) return (center: Offset.zero, scale: shorter / viewport.span, rotation: 0.0);
+    final rotation = viewport.rotationFor(pose.yaw);
     switch (viewport.mode) {
       case MapMode.follow:
-        return (center: Offset(pose.x, pose.y), scale: shorter / viewport.span);
+        return (center: Offset(pose.x, pose.y), scale: shorter / viewport.span, rotation: rotation);
       case MapMode.free:
-        return (center: viewport.center, scale: shorter / viewport.span);
+        return (center: viewport.center, scale: shorter / viewport.span, rotation: rotation);
       case MapMode.fit:
-        var minX = pose.x, maxX = pose.x, minY = pose.y, maxY = pose.y;
+        // the bounding box as the map is turned on screen
+        final c = math.cos(rotation), s = math.sin(rotation);
+        var minX = double.infinity, maxX = -double.infinity;
+        var minY = double.infinity, maxY = -double.infinity;
         void include(double x, double y) {
-          minX = math.min(minX, x);
-          maxX = math.max(maxX, x);
-          minY = math.min(minY, y);
-          maxY = math.max(maxY, y);
+          final tx = x * c - y * s, ty = x * s + y * c;
+          minX = math.min(minX, tx);
+          maxX = math.max(maxX, tx);
+          minY = math.min(minY, ty);
+          maxY = math.max(maxY, ty);
         }
 
+        include(pose.x, pose.y);
         for (final p in widget.route.value) {
           include(p.x, p.y);
         }
@@ -146,39 +194,73 @@ class _MapViewState extends State<MapView> {
         final least = widget.compact ? 6.0 : 8.0;
         final width = math.max(maxX - minX + 2 * margin, least);
         final height = math.max(maxY - minY + 2 * margin, least);
+        final mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
         return (
-          center: Offset((minX + maxX) / 2, (minY + maxY) / 2),
+          center: Offset(mx * c + my * s, -mx * s + my * c),
           scale: math.min(math.max(1.0, _size.width) / width, math.max(1.0, _size.height) / height),
+          rotation: rotation,
         );
     }
+  }
+
+  /// Map metres of a screen offset from the middle of the view.
+  static Offset _toMap(Offset screen, double scale, double rotation) {
+    final x = screen.dx / scale, y = -screen.dy / scale;
+    final c = math.cos(rotation), s = math.sin(rotation);
+    return Offset(x * c + y * s, -x * s + y * c);
+  }
+
+  /// The map point under [focal] in the view as it is now.
+  Offset _mapPointAt(Offset focal) {
+    final view = _view();
+    return view.center + _toMap(focal - _size.center(Offset.zero), view.scale, view.rotation);
   }
 
   void _onScaleStart(ScaleStartDetails details) {
     final view = _view();
     _startFocal = details.localFocalPoint;
-    _startCenter = view.center;
-    _startScale = view.scale;
+    _baseScale = view.scale;
+    _baseRotation = view.rotation;
+    _anchor = _mapPointAt(details.localFocalPoint);
+    _aroundRobot = widget.viewport.mode == MapMode.follow;
+    _twistFrom = null;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
     final viewport = widget.viewport;
     final shorter = math.max(1.0, _size.shortestSide);
-    final span = MapViewport.clampSpan(shorter / (_startScale * details.scale));
-    final moved = (details.localFocalPoint - _startFocal).distance;
-    if (widget.pose == null || (viewport.mode == MapMode.follow && moved < 24)) {
-      viewport.zoom(span); // around the robot
+    final span = MapViewport.clampSpan(shorter / (_baseScale * details.scale));
+    if (widget.pose == null) {
+      viewport.zoom(span); // around the robot, which looks up the screen
       return;
     }
-    // the map point that was under the fingers stays under them
-    final scale = shorter / span;
-    final half = _size.center(Offset.zero);
-    final from = _startFocal - half;
-    final to = details.localFocalPoint - half;
-    final anchor = Offset(
-      _startCenter.dx + from.dx / _startScale,
-      _startCenter.dy - from.dy / _startScale,
-    );
-    viewport.moveTo(Offset(anchor.dx - to.dx / scale, anchor.dy + to.dy / scale), span);
+    // two fingers turning (clockwise is positive on screen) turn the map with them
+    final twist = wrapAngle(details.rotation);
+    if (_twistFrom == null && details.pointerCount >= 2 && twist.abs() > _twistThreshold) {
+      _twistFrom = twist;
+    }
+    final twistFrom = _twistFrom;
+    final turned = twistFrom == null ? null : _baseRotation - (twist - twistFrom);
+    if (_aroundRobot) {
+      if ((details.localFocalPoint - _startFocal).distance < 24) {
+        viewport.zoom(span, rotation: turned);
+        return;
+      }
+      // the fingers moved away: from here on the map point under them stays under them
+      _aroundRobot = false;
+      _anchor = _mapPointAt(details.localFocalPoint);
+    }
+    final rotation = turned ?? _baseRotation;
+    final focal = details.localFocalPoint - _size.center(Offset.zero);
+    viewport.moveTo(_anchor - _toMap(focal, shorter / span, rotation), span, rotation);
+  }
+
+  void _onScaleEnd(ScaleEndDetails details) {
+    final viewport = widget.viewport;
+    if (_twistFrom != null && !viewport.headingUp && viewport.rotation.abs() < _snapNorth) {
+      viewport.northUp();
+    }
+    _twistFrom = null;
   }
 
   @override
@@ -190,6 +272,7 @@ class _MapViewState extends State<MapView> {
         return GestureDetector(
           onScaleStart: interactive ? _onScaleStart : null,
           onScaleUpdate: interactive ? _onScaleUpdate : null,
+          onScaleEnd: interactive ? _onScaleEnd : null,
           onDoubleTap: interactive ? widget.viewport.follow : null,
           child: ListenableBuilder(
             listenable: _changes,
@@ -210,6 +293,7 @@ class _MapViewState extends State<MapView> {
                       pose: pose,
                       center: view.center,
                       scale: view.scale,
+                      rotation: view.rotation,
                       modeColor: widget.modeColor,
                       compact: widget.compact,
                     ),
@@ -243,6 +327,7 @@ class _MapPainter extends CustomPainter {
     required this.pose,
     required this.center,
     required this.scale,
+    required this.rotation,
     required this.modeColor,
     required this.compact,
   });
@@ -257,9 +342,11 @@ class _MapPainter extends CustomPainter {
   final int markCount;
   final Pose? pose;
 
-  /// Middle of the view in map metres, and pixels per metre.
+  /// Middle of the view in map metres, pixels per metre, and the turn of the map on screen
+  /// (radians counter-clockwise).
   final Offset center;
   final double scale;
+  final double rotation;
   final Color modeColor;
   final bool compact;
 
@@ -273,10 +360,16 @@ class _MapPainter extends CustomPainter {
       return;
     }
     final cx = center.dx, cy = center.dy;
-    Offset toScreen(double x, double y) =>
-        Offset(size.width / 2 + (x - cx) * scale, size.height / 2 - (y - cy) * scale);
+    final rc = math.cos(rotation), rs = math.sin(rotation);
+    Offset toScreen(double x, double y) {
+      final dx = x - cx, dy = y - cy;
+      return Offset(
+        size.width / 2 + (dx * rc - dy * rs) * scale,
+        size.height / 2 - (dx * rs + dy * rc) * scale,
+      );
+    }
 
-    _grid(canvas, size, cx, cy);
+    _grid(canvas, size, toScreen);
 
     final cloud = this.cloud;
     if (cloud != null) {
@@ -315,7 +408,7 @@ class _MapPainter extends CustomPainter {
     for (final m in marks) {
       _stopPoint(canvas, toScreen(m.dx, m.dy));
     }
-    _robot(canvas, toScreen(pose.x, pose.y), pose.yaw);
+    _robot(canvas, toScreen(pose.x, pose.y), pose.yaw + rotation);
     if (!compact) _scaleBar(canvas, size);
   }
 
@@ -339,19 +432,19 @@ class _MapPainter extends CustomPainter {
     return 1000;
   }
 
-  void _grid(Canvas canvas, Size size, double cx, double cy) {
+  /// Map grid lines over the whole view, however the map is turned.
+  void _grid(Canvas canvas, Size size, Offset Function(double, double) toScreen) {
     final step = _step;
     final paint = Paint()
       ..color = const Color(0x14FFFFFF)
       ..strokeWidth = 1;
-    final halfW = size.width / 2 / scale, halfH = size.height / 2 / scale;
-    for (var x = ((cx - halfW) / step).floor() * step; x <= cx + halfW; x += step) {
-      final sx = size.width / 2 + (x - cx) * scale;
-      canvas.drawLine(Offset(sx, 0), Offset(sx, size.height), paint);
+    final reach = size.longestSide / scale; // more than half the diagonal, in metres
+    final cx = center.dx, cy = center.dy;
+    for (var x = ((cx - reach) / step).floor() * step; x <= cx + reach; x += step) {
+      canvas.drawLine(toScreen(x, cy - reach), toScreen(x, cy + reach), paint);
     }
-    for (var y = ((cy - halfH) / step).floor() * step; y <= cy + halfH; y += step) {
-      final sy = size.height / 2 - (y - cy) * scale;
-      canvas.drawLine(Offset(0, sy), Offset(size.width, sy), paint);
+    for (var y = ((cy - reach) / step).floor() * step; y <= cy + reach; y += step) {
+      canvas.drawLine(toScreen(cx - reach, y), toScreen(cx + reach, y), paint);
     }
   }
 
@@ -491,6 +584,7 @@ class _MapPainter extends CustomPainter {
       old.pose?.yaw != pose?.yaw ||
       old.center != center ||
       old.scale != scale ||
+      old.rotation != rotation ||
       old.modeColor != modeColor ||
       old.compact != compact;
 }

@@ -8,7 +8,8 @@ there is no ROS on the handheld.
 
 - One home screen, no menus: two views, the camera and a top-down map, one big and one small
   (tap the small one to swap). The map shows the loaded route with its waypoints and stop points,
-  where the robot has been, the lidar and the robot; pinch to zoom, drag to look around.
+  where the robot has been, the lidar and the robot; pinch to zoom, drag to look around, twist
+  to turn it, or let it turn with the robot (compass).
 - Mapping and patrol icons at the bottom: record a route, mark stop points, record AprilTags,
   localize, pick a route, start / pause / resume, end.
 - STOP (software e-stop, released only by holding) and the robot's own `robot_commands` (stand up,
@@ -66,7 +67,7 @@ video*, says which one plays: WebRTC, or JPEG frames and why.
 | Swap camera and map | Select | tap the small view |
 | Speed level (30 / 60 / 100 % of the robot limits) | D-pad up / down | gear, Speed |
 | Robot actions | L1 + A stand up, L1 + Y sit down | icons under STOP |
-| Map | | pinch to zoom, drag to move, double tap to follow the robot |
+| Map | | pinch to zoom, drag to move, twist with two fingers to turn, double tap to follow the robot; the compass turns it north up or with the robot's heading |
 
 The robot only takes the joystick in REMOTE; in AUTO navigation drives. After a STOP nothing but
 zero reaches the robot until "Hold to release" is held for a second.

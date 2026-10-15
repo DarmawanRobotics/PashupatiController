@@ -689,10 +689,16 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  /// Under the small view: swap the two views; the map follows the robot or shows the route.
+  /// Under the small view: swap the two views; the map follows the robot or shows the route,
+  /// and the compass turns it north up or with the robot's heading.
   Widget _viewButtons() {
     final follow = _viewport.mode == MapMode.follow;
     final fit = _viewport.mode == MapMode.fit;
+    final headingUp = _viewport.headingUp;
+    final pose = client.state.pose;
+    // not localized: the map shows the robot looking up, unturned
+    final rotation = pose == null ? 0.0 : _viewport.rotationFor(pose.yaw);
+    final turned = headingUp || _viewport.rotation.abs() > 0.01;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -719,6 +725,17 @@ class _DriveScreenState extends State<DriveScreen> {
           tint: fit ? Palette.auto : Palette.text,
           active: fit,
           onPressed: _viewport.fit,
+        ),
+        const SizedBox(width: 8),
+        // the needle points to map north; turned or heading up: back to north up
+        HudButton(
+          icon: Icons.navigation_rounded,
+          iconAngle: -rotation,
+          size: 36,
+          label: s.t(turned ? 'map_north' : 'map_heading'),
+          tint: headingUp ? Palette.auto : Palette.text,
+          active: headingUp,
+          onPressed: turned ? _viewport.northUp : _viewport.trackHeading,
         ),
       ],
     );
