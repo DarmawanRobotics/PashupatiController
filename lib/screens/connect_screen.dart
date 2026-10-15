@@ -146,7 +146,13 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('PASHUPATI', style: Txt.display.copyWith(letterSpacing: 3)),
+        Row(
+          children: [
+            Image.asset('assets/images/logo.png', width: 44, height: 44),
+            const SizedBox(width: 12),
+            Flexible(child: Text('PASHUPATI', style: Txt.display.copyWith(letterSpacing: 3))),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(s.t('tagline'), style: Txt.body.copyWith(color: Palette.muted)),
         Expanded(
