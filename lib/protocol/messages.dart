@@ -71,7 +71,7 @@ class Beacon {
   final DateTime seen;
 }
 
-/// WebRTC video the robot offers (MediaMTX, WHEP): http://<robot>:<port>/<path>/whep.
+/// WebRTC video the robot offers (MediaMTX, WHEP): `http://<robot>:<port>/<path>/whep`.
 class VideoOffer {
   const VideoOffer(this.port, this.path);
 

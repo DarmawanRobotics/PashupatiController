@@ -7,6 +7,7 @@ import 'package:gamepads/gamepads.dart';
 
 import '../input/gamepad_input.dart';
 import '../net/teleop_client.dart';
+import '../protocol/messages.dart' show RobotState;
 import '../robot_actions.dart';
 import '../settings.dart';
 import '../theme.dart';
