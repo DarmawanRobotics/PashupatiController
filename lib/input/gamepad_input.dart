@@ -13,15 +13,46 @@ class GamepadInput extends ChangeNotifier {
   /// Last raw event, for the gamepad test in the settings.
   String lastEvent = '';
 
+  /// A gamepad is attached (the handheld's own controls count), and its name.
+  bool connected = false;
+  String name = '';
+  StreamSubscription<GamepadConnectionEvent>? _connections;
+  DateTime _lastInput = DateTime.fromMillisecondsSinceEpoch(0);
+
   /// Button presses (down edges only).
   Stream<GamepadButton> get presses => _presses.stream;
 
   void start() {
     try {
       _subscription ??= Gamepads.normalizedEvents.listen(_onEvent, onError: (Object _) {});
+      _connections ??= Gamepads.connectionEvents.listen((_) => refresh(), onError: (Object _) {});
     } on Exception {
       // no gamepad plugin on this platform (tests, desktop without support)
     }
+    refresh();
+  }
+
+  /// Asks the plugin which gamepads are attached (at start, on the drive screen, on plug events).
+  Future<void> refresh() async {
+    try {
+      final pads = await Gamepads.list();
+      final padName = pads.isEmpty ? name : pads.first.name;
+      for (final pad in pads) {
+        unawaited(pad.dispose()); // every listed controller holds an event subscription
+      }
+      // a controller that sends input counts even if the plugin does not list it
+      final recent = DateTime.now().difference(_lastInput) < const Duration(seconds: 30);
+      _setConnected(pads.isNotEmpty || recent, padName);
+    } on Exception {
+      // no gamepad plugin on this platform
+    }
+  }
+
+  void _setConnected(bool value, String padName) {
+    if (value == connected && padName == name) return;
+    connected = value;
+    name = padName;
+    notifyListeners();
   }
 
   double axis(GamepadAxis axis) => _state.axisValue(axis);
@@ -37,6 +68,8 @@ class GamepadInput extends ChangeNotifier {
   }
 
   void _onEvent(NormalizedGamepadEvent event) {
+    _lastInput = DateTime.now();
+    connected = true;
     final button = event.button;
     final wasDown = button != null && _state.isPressed(button);
     _state.update(event);
@@ -48,6 +81,7 @@ class GamepadInput extends ChangeNotifier {
 
   @override
   void dispose() {
+    _connections?.cancel();
     _subscription?.cancel();
     _presses.close();
     super.dispose();

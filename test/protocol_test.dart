@@ -108,6 +108,15 @@ void main() {
     expect(state.cmd, [0.2, 0.0, 0.1]);
     expect(state.healthIssues, ['odometry lost']);
     expect(RobotState.fromJson({'pose': null}).pose, isNull);
+    final tags = RobotState.fromJson({
+      'tags': [
+        [3, 0.1, 0.2, 0.3, 0.2, 0.3, 0.4, 0.1, 0.4],
+        [4, 'x'],
+      ],
+    }).tags;
+    expect(tags.length, 1);
+    expect(tags.first.id, 3);
+    expect(tags.first.corners[2], closeTo(0.3, 1e-9));
   });
 
   test('welcome without robot_commands derives them from commands', () {

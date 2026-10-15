@@ -63,6 +63,7 @@ class _DriveScreenState extends State<DriveScreen> {
     _lifecycle = AppLifecycleListener(onPause: _suspend, onResume: _resume);
     client.addListener(_onClient);
     s.settings.addListener(_onSettings);
+    s.gamepad.refresh(); // the plugin may not have listed the controls yet at app start
     _onClient();
   }
 
@@ -386,6 +387,7 @@ class _DriveScreenState extends State<DriveScreen> {
       enabled: client.cameraEnabled,
       offText: s.t('camera_off'),
       waitText: s.t('camera_wait'),
+      tags: state.tags,
     );
     final map = MapView(
       viewport: _viewport,
@@ -485,6 +487,20 @@ class _DriveScreenState extends State<DriveScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (!s.gamepad.connected)
+                IgnorePointer(
+                  key: const ValueKey('no-gamepad'),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: ToastView(
+                      toast: Toast(
+                        s.t('no_gamepad'),
+                        color: Palette.caution,
+                        icon: Icons.videogame_asset_off_rounded,
+                      ),
+                    ),
+                  ),
+                ),
               if (status != null)
                 IgnorePointer(
                   key: const ValueKey('status'),

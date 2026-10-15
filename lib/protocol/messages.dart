@@ -27,6 +27,19 @@ String _str(Object? value, [String fallback = '']) => value is String ? value : 
 List<String> _strings(Object? value) =>
     value is List ? value.whereType<String>().toList() : const <String>[];
 
+/// `state.tags`: rows of [id, x0, y0, x1, y1, x2, y2, x3, y3]; broken rows are skipped.
+List<Tag> _tags(Object? value) {
+  if (value is! List) return const [];
+  final out = <Tag>[];
+  for (final row in value) {
+    if (row is! List || row.length != 9) continue;
+    final numbers = [for (final v in row) _num(v)];
+    if (numbers.contains(null)) continue;
+    out.add(Tag(numbers.first!.round(), [for (final v in numbers.skip(1)) v!]));
+  }
+  return out;
+}
+
 /// Answer to a LAN `discover` probe.
 class Beacon {
   const Beacon({
@@ -132,6 +145,7 @@ class RobotState {
     this.healthIssues = const [],
     this.estop = false,
     this.field,
+    this.tags = const [],
   });
 
   factory RobotState.fromJson(Map<String, dynamic> json) {
@@ -168,6 +182,7 @@ class RobotState {
       healthIssues: health is Map ? _strings(health['issues']) : const [],
       estop: json['estop'] == true,
       field: json['field'] is String ? json['field'] as String : null,
+      tags: _tags(json['tags']),
     );
   }
 
@@ -194,10 +209,23 @@ class RobotState {
   /// Protective field: clear, limited, stop, stale, off, or null.
   final String? field;
 
+  /// AprilTags the robot sees in the camera image now.
+  final List<Tag> tags;
+
   bool get remote => mode == 'remote';
   bool get localized => localization.isNotEmpty && localization != 'none';
   bool get navPaused => nav == 'PAUSED';
   bool get navActive => !const {'NAV_INACTIVE', 'NO_PATH', 'PAUSED'}.contains(nav);
+}
+
+/// An AprilTag in the camera image.
+class Tag {
+  const Tag(this.id, this.corners);
+
+  final int id;
+
+  /// x0, y0, ... x3, y3 as fractions of the image width and height.
+  final List<double> corners;
 }
 
 class RoutePoint {

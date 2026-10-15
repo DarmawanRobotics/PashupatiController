@@ -4,10 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../protocol/messages.dart';
 import '../theme.dart';
 
-/// Full-screen robot camera. Frames are decoded one at a time, newest first, outside the
-/// image cache (a cache entry per video frame would only fill memory).
+/// Robot camera with the AprilTags it sees. Frames are decoded one at a time, newest first,
+/// outside the image cache (a cache entry per video frame would only fill memory).
 class CameraView extends StatefulWidget {
   const CameraView({
     super.key,
@@ -15,12 +16,14 @@ class CameraView extends StatefulWidget {
     required this.enabled,
     required this.offText,
     required this.waitText,
+    this.tags = const [],
   });
 
   final ValueListenable<Uint8List?> frames;
   final bool enabled;
   final String offText;
   final String waitText;
+  final List<Tag> tags;
 
   @override
   State<CameraView> createState() => _CameraViewState();
@@ -106,10 +109,68 @@ class _CameraViewState extends State<CameraView> {
     if (!widget.enabled || image == null) {
       return _Backdrop(text: widget.enabled ? widget.waitText : widget.offText);
     }
-    return SizedBox.expand(
-      child: RawImage(image: image, fit: BoxFit.cover, filterQuality: FilterQuality.low),
+    final size = Size(image.width.toDouble(), image.height.toDouble());
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RawImage(image: image, fit: BoxFit.cover, filterQuality: FilterQuality.low),
+        if (widget.tags.isNotEmpty) CustomPaint(painter: _TagPainter(widget.tags, size)),
+      ],
     );
   }
+}
+
+/// AprilTag outlines and ids over the video, cropped the way BoxFit.cover crops the frame.
+class _TagPainter extends CustomPainter {
+  _TagPainter(this.tags, this.imageSize);
+
+  final List<Tag> tags;
+  final Size imageSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty || imageSize.isEmpty) return;
+    final fitted = applyBoxFit(BoxFit.cover, imageSize, size);
+    final source = Alignment.center.inscribe(fitted.source, Offset.zero & imageSize);
+    final shown = Alignment.center.inscribe(fitted.destination, Offset.zero & size);
+    Offset toView(double fx, double fy) => Offset(
+      shown.left + (fx * imageSize.width - source.left) * shown.width / source.width,
+      shown.top + (fy * imageSize.height - source.top) * shown.height / source.height,
+    );
+    final outline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeJoin = StrokeJoin.round
+      ..color = Palette.auto;
+    for (final tag in tags) {
+      final c = tag.corners;
+      final corners = [for (var i = 0; i < 4; i++) toView(c[2 * i], c[2 * i + 1])];
+      canvas.drawPath(Path()..addPolygon(corners, true), outline);
+      final top = corners.reduce((a, b) => a.dy <= b.dy ? a : b);
+      final bottom = corners.reduce((a, b) => a.dy >= b.dy ? a : b);
+      _label(canvas, 'ID ${tag.id}', top, bottom);
+    }
+  }
+
+  /// The id above the tag, or under it when the tag is at the top edge.
+  void _label(Canvas canvas, String text, Offset top, Offset bottom) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: Txt.label.copyWith(color: Palette.night)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final width = painter.width + 10, height = painter.height + 4;
+    var box = Rect.fromLTWH(top.dx, top.dy - height - 4, width, height);
+    if (box.top < 4) box = Rect.fromLTWH(bottom.dx, bottom.dy + 4, width, height);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(box, const Radius.circular(4)),
+      Paint()..color = Palette.auto,
+    );
+    painter.paint(canvas, box.topLeft + const Offset(5, 2));
+    painter.dispose();
+  }
+
+  @override
+  bool shouldRepaint(_TagPainter old) => old.tags != tags || old.imageSize != imageSize;
 }
 
 /// Dark floor grid shown when there is no video.
