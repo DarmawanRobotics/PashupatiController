@@ -119,6 +119,63 @@ void main() {
     expect(tags.first.corners[2], closeTo(0.3, 1e-9));
   });
 
+  test('inspection and patrol speed in the state', () {
+    final state = RobotState.fromJson({
+      'inspection': {
+        'on': true,
+        'state': 'running',
+        'model': 'moondream',
+        'interval': 0,
+        'count': 12,
+        'reports': 2,
+        'last': {
+          'cat': 'trash',
+          'reported': true,
+          'ms': 1800,
+          'age': 3,
+          'desc': 'a cup',
+          'source': 'periodic',
+        },
+      },
+      'speed': {'target': 0.4, 'min': 0.1, 'max': 0.6},
+    });
+    final inspection = state.inspection!;
+    expect(inspection.pace, 'continuous');
+    expect(inspection.reports, 2);
+    expect(inspection.last!.category, 'trash');
+    expect(inspection.last!.clear, isFalse);
+    expect(inspection.last!.age, 3);
+    expect(state.speed!.max, 0.6);
+    expect(RobotState.fromJson({'inspection': null}).inspection, isNull);
+    expect(RobotState.fromJson({'speed': {'target': 'x', 'min': 0.1, 'max': 0.6}}).speed, isNull);
+    expect(RobotState.fromJson({'speed': {'target': 0.4, 'min': 0.7, 'max': 0.6}}).speed, isNull);
+    expect(InspectionStatus.fromJson({'interval': -1})!.pace, 'stops');
+    expect(InspectionStatus.fromJson({'interval': 5})!.pace, 'interval');
+    expect(InspectionStatus.fromJson({})!.state, 'offline');
+    expect(InspectionStatus.fromJson({'last': {}})!.last!.clear, isTrue);
+  });
+
+  test('inspection models and their names', () {
+    final models = InspectionModel.listFromJson([
+      {'name': 'moondream:latest', 'installed': true, 'active': true},
+      {'name': 'x', 'installed': null},
+      {'installed': true},
+      'junk',
+    ]);
+    expect(models.map((m) => m.name).toList(), ['moondream:latest', 'x']);
+    expect(models.first.active, isTrue);
+    expect(models[1].installed, isNull);
+    expect(InspectionModel.listFromJson('junk'), isEmpty);
+    expect(fullModelName('moondream'), 'moondream:latest');
+    expect(fullModelName(' qwen3-vl:2b-instruct '), 'qwen3-vl:2b-instruct');
+    expect(
+      fullModelName('ahmadwaqar/smolvlm2-2.2b-instruct'),
+      'ahmadwaqar/smolvlm2-2.2b-instruct:latest',
+    );
+    expect(categoryLabel('id', 'trash'), 'Sampah');
+    expect(categoryLabel('en', 'wet_floor'), 'wet floor');
+  });
+
   test('localization source kinds', () {
     RobotState loc(String v) => RobotState.fromJson({'localization': v});
     expect(loc('none').localizationKind, 'none');

@@ -18,6 +18,9 @@ const pashupatiCommands = {
   'list_routes',
   'localize',
   'record_tags',
+  'inspection_set',
+  'inspection_models',
+  'nav_speed',
 };
 
 double? _num(Object? value) => value is num && value.isFinite ? value.toDouble() : null;
@@ -38,6 +41,12 @@ List<Tag> _tags(Object? value) {
     out.add(Tag(numbers.first!.round(), [for (final v in numbers.skip(1)) v!]));
   }
   return out;
+}
+
+/// A model name as Ollama lists it: `moondream` -> `moondream:latest` (as the robot compares).
+String fullModelName(String model) {
+  final name = model.trim();
+  return name.split('/').last.contains(':') ? name : '$name:latest';
 }
 
 /// Answer to a LAN `discover` probe.
@@ -176,6 +185,8 @@ class RobotState {
     this.estop = false,
     this.field,
     this.tags = const [],
+    this.inspection,
+    this.speed,
   });
 
   factory RobotState.fromJson(Map<String, dynamic> json) {
@@ -213,6 +224,8 @@ class RobotState {
       estop: json['estop'] == true,
       field: json['field'] is String ? json['field'] as String : null,
       tags: _tags(json['tags']),
+      inspection: InspectionStatus.fromJson(json['inspection']),
+      speed: PatrolSpeed.fromJson(json['speed']),
     );
   }
 
@@ -241,6 +254,12 @@ class RobotState {
 
   /// AprilTags the robot sees in the camera image now.
   final List<Tag> tags;
+
+  /// The VLM floor inspection; null when the robot runs none.
+  final InspectionStatus? inspection;
+
+  /// Patrol speed of the navigation; null when navigation does not run.
+  final PatrolSpeed? speed;
 
   bool get remote => mode == 'remote';
   bool get localized => localization.isNotEmpty && localization != 'none';
@@ -280,4 +299,143 @@ class RoutePoint {
   final double dwell;
 
   bool get isStop => dwell > 0;
+}
+
+/// `state.inspection`: the robot's VLM floor inspection (anomaly_detector_node).
+class InspectionStatus {
+  const InspectionStatus({
+    required this.on,
+    required this.state,
+    this.model = '',
+    this.interval = 0,
+    this.error = '',
+    this.count = 0,
+    this.reports = 0,
+    this.last,
+  });
+
+  /// Null unless the robot sent an inspection object.
+  static InspectionStatus? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final last = json['last'];
+    return InspectionStatus(
+      on: json['on'] == true,
+      state: _str(json['state'], 'offline'),
+      model: _str(json['model']),
+      interval: _num(json['interval']) ?? 0,
+      error: _str(json['error']),
+      count: _num(json['count'])?.round() ?? 0,
+      reports: _num(json['reports'])?.round() ?? 0,
+      last: last is Map ? InspectionResult.fromJson(last) : null,
+    );
+  }
+
+  final bool on;
+
+  /// loading, running, off, error, or offline (the robot stopped hearing from the detector).
+  final String state;
+  final String model;
+
+  /// Seconds between inspections: 0 back to back, > 0 every N s, < 0 only at stop points.
+  final double interval;
+  final String error;
+
+  /// Inspections since the detector started.
+  final int count;
+
+  /// Findings sent to NETRA since the detector started.
+  final int reports;
+  final InspectionResult? last;
+
+  /// continuous, interval or stops.
+  String get pace => interval < 0 ? 'stops' : (interval == 0 ? 'continuous' : 'interval');
+}
+
+/// The latest inspection the robot made.
+class InspectionResult {
+  const InspectionResult({
+    required this.category,
+    this.reported = false,
+    this.latencyMs = 0,
+    this.age,
+    this.description = '',
+    this.source = '',
+  });
+
+  factory InspectionResult.fromJson(Map<dynamic, dynamic> json) => InspectionResult(
+    category: _str(json['cat'], 'none'),
+    reported: json['reported'] == true,
+    latencyMs: _num(json['ms'])?.round() ?? 0,
+    age: _num(json['age'])?.round(),
+    description: _str(json['desc']),
+    source: _str(json['source']),
+  );
+
+  /// What the model saw: none for a clean floor, else a category such as trash or spill.
+  final String category;
+
+  /// Sent to NETRA as a finding.
+  final bool reported;
+  final int latencyMs;
+
+  /// Seconds since this inspection; null when unknown.
+  final int? age;
+  final String description;
+
+  /// periodic or stop_point.
+  final String source;
+
+  bool get clear => category.isEmpty || category == 'none';
+}
+
+/// A model the robot can inspect with (`inspection_models`).
+class InspectionModel {
+  const InspectionModel(this.name, {this.installed, this.active = false});
+
+  /// Entries without a name are skipped.
+  static List<InspectionModel> listFromJson(Object? data) {
+    if (data is! List) return const [];
+    final out = <InspectionModel>[];
+    for (final item in data) {
+      if (item is! Map) continue;
+      final name = item['name'];
+      if (name is! String || name.isEmpty) continue;
+      final installed = item['installed'];
+      out.add(
+        InspectionModel(
+          name,
+          installed: installed is bool ? installed : null,
+          active: item['active'] == true,
+        ),
+      );
+    }
+    return out;
+  }
+
+  final String name;
+
+  /// Pulled into Ollama on the robot; null when the robot could not ask Ollama.
+  final bool? installed;
+
+  /// The model in use when the list was fetched.
+  final bool active;
+}
+
+/// `state.speed`: the patrol speed and the range the handheld may set, m/s.
+class PatrolSpeed {
+  const PatrolSpeed(this.target, this.min, this.max);
+
+  /// Null unless all three are numbers and 0 < min <= max.
+  static PatrolSpeed? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final target = _num(json['target']);
+    final low = _num(json['min']);
+    final high = _num(json['max']);
+    if (target == null || low == null || high == null || low <= 0 || high < low) return null;
+    return PatrolSpeed(target, low, high);
+  }
+
+  final double target;
+  final double min;
+  final double max;
 }
