@@ -8,13 +8,13 @@ there is no ROS on the handheld.
 
 - One home screen, no menus: two views, the camera and a top-down map, one big and one small
   (tap the small one to swap). The map shows the loaded route with its waypoints and stop points,
-  where the robot has been, the lidar and the robot.
-- Mapping and patrol icons on top: record a route, mark stop points, record AprilTags, localize,
-  pick a route, start / pause / resume, end.
+  where the robot has been, the lidar and the robot; pinch to zoom, drag to look around.
+- Mapping and patrol icons at the bottom: record a route, mark stop points, record AprilTags,
+  localize, pick a route, start / pause / resume, end.
 - STOP (software e-stop, released only by holding) and the robot's own `robot_commands` (stand up,
   sit down, gaits, ...) as icons on the right; anything that moves the robot on its own asks first.
-- Floating thumb sticks (left drives and strafes, right turns) or the physical sticks, AUTO /
-  REMOTE switch, live battery, link, protective field and health.
+- Driving on the physical sticks only, AUTO / REMOTE switch, live battery, link, protective field
+  and health.
 - Settings under the gear: speed level, video, lidar on the map, language, inspection time.
 - Finds robots on the LAN by itself; Indonesian and English.
 
@@ -52,15 +52,16 @@ on their own.
 
 ## Controls
 
-| | Touch | Gamepad |
+| | Gamepad | Touch |
 |---|---|---|
-| Drive and strafe | left half of the screen | left stick |
-| Turn | right half of the screen | right stick |
-| STOP (software e-stop) | red button | B, also on the other pages |
-| AUTO / REMOTE | switch on top | Start |
-| Swap camera and map | tap the small view | Select |
-| Speed level (30 / 60 / 100 % of the robot limits) | gear, Speed | D-pad up / down |
-| Robot actions | icons under STOP | L1 + A stand up, L1 + Y sit down |
+| Drive and strafe | left stick | |
+| Turn | right stick | |
+| STOP (software e-stop) | B, also on the other pages | red button |
+| AUTO / REMOTE | Start | switch on top |
+| Swap camera and map | Select | tap the small view |
+| Speed level (30 / 60 / 100 % of the robot limits) | D-pad up / down | gear, Speed |
+| Robot actions | L1 + A stand up, L1 + Y sit down | icons under STOP |
+| Map | | pinch to zoom, drag to move, double tap to follow the robot |
 
 The robot only takes the joystick in REMOTE; in AUTO navigation drives. After a STOP nothing but
 zero reaches the robot until "Hold to release" is held for a second.
@@ -78,7 +79,7 @@ lib/
 ├── protocol/   messages.dart (JSON), streams.dart (chunked camera / lidar / route)
 ├── net/        teleop_client.dart (session, commands, joystick), discovery.dart
 ├── input/      gamepad_input.dart (gamepads, normalized)
-├── widgets/    hud, sticks, camera, map
+├── widgets/    hud, camera, map
 ├── screens/    connect, drive (home), routes, settings
 ├── robot_actions.dart   icons and labels of known robot commands
 └── l10n.dart            Indonesian and English text

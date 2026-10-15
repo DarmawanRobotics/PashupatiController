@@ -13,12 +13,12 @@ import '../theme.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/hud.dart';
 import '../widgets/map_view.dart';
-import '../widgets/stick.dart';
 import 'routes_screen.dart';
 import 'settings_screen.dart';
 
-/// Home while connected: the camera and the map (tap the small box to swap them), thumb sticks,
-/// mapping and patrol icons on top, STOP and the robot's own actions on the right.
+/// Home while connected: the camera and the map (tap the small box to swap them), STOP and the
+/// robot's own actions on the right, mapping and patrol icons at the bottom. Driving is on the
+/// gamepad; touch is for the views (pinch and drag the big map).
 class DriveScreen extends StatefulWidget {
   const DriveScreen({super.key, required this.services});
 
@@ -35,8 +35,6 @@ class _DriveScreenState extends State<DriveScreen> {
   Services get s => widget.services;
   TeleopClient get client => widget.services.client;
 
-  Offset _move = Offset.zero;
-  Offset _turn = Offset.zero;
   final Set<String> _busy = {};
   Toast? _toast;
   Timer? _toastTimer;
@@ -47,8 +45,8 @@ class _DriveScreenState extends State<DriveScreen> {
   /// Pages and dialogs open over this screen; the sticks rest meanwhile.
   int _covers = 0;
 
-  /// Map: keep the robot in the middle instead of the whole route.
-  bool _follow = false;
+  /// What the map shows, for both views and the buttons under the small one.
+  final _viewport = MapViewport();
 
   /// The route being recorded: since when, and the stop points marked in it.
   DateTime? _recordingSince;
@@ -76,26 +74,23 @@ class _DriveScreenState extends State<DriveScreen> {
     _lifecycle.dispose();
     client.removeListener(_onClient);
     s.settings.removeListener(_onSettings);
+    _viewport.dispose();
     super.dispose();
   }
 
   // ---------------------------------------------------------------- input
 
-  /// 20 Hz: touch sticks win over the gamepad; the client only sends in REMOTE mode.
+  /// 20 Hz from the gamepad sticks; the client only sends in REMOTE mode.
   void _drive() {
-    if (_covers > 0) {
+    final pad = s.gamepad;
+    if (_covers > 0 || (s.settings.deadman && !pad.pressed(GamepadButton.rightBumper))) {
       client.drive(0, 0, 0);
+      _hinted = false;
       return;
     }
-    var x = _move.dx, y = _move.dy, r = _turn.dx;
-    if (_move == Offset.zero && _turn == Offset.zero) {
-      final pad = s.gamepad;
-      if (!s.settings.deadman || pad.pressed(GamepadButton.rightBumper)) {
-        x = GamepadInput.shaped(pad.axis(GamepadAxis.leftStickX));
-        y = GamepadInput.shaped(pad.axis(GamepadAxis.leftStickY));
-        r = GamepadInput.shaped(pad.axis(GamepadAxis.rightStickX));
-      }
-    }
+    final x = GamepadInput.shaped(pad.axis(GamepadAxis.leftStickX));
+    final y = GamepadInput.shaped(pad.axis(GamepadAxis.leftStickY));
+    final r = GamepadInput.shaped(pad.axis(GamepadAxis.rightStickX));
     final limits = client.welcome?.limits ?? const [0.5, 0.3, 1.0];
     final scale = AppSettings.speedScale[s.settings.gear - 1];
     // stick up = forward (+x), stick right = right (-y), turn right = clockwise (-z)
@@ -288,8 +283,6 @@ class _DriveScreenState extends State<DriveScreen> {
   /// Runs [open] (a page or a dialog over this screen) with the sticks at rest until it closes.
   Future<T> _cover<T>(Future<T> Function() open) async {
     _covers++;
-    _move = Offset.zero;
-    _turn = Offset.zero;
     client.drive(0, 0, 0);
     try {
       return await open();
@@ -395,6 +388,7 @@ class _DriveScreenState extends State<DriveScreen> {
       waitText: s.t('camera_wait'),
     );
     final map = MapView(
+      viewport: _viewport,
       points: client.lidarPoints,
       route: client.routePoints,
       trail: client.trail,
@@ -402,7 +396,6 @@ class _DriveScreenState extends State<DriveScreen> {
       pose: state.pose,
       modeColor: modeColor,
       lidar: client.lidarEnabled,
-      follow: _follow,
       notLocalizedText: s.t('not_localized'),
       compact: !mapMain,
     );
@@ -451,35 +444,6 @@ class _DriveScreenState extends State<DriveScreen> {
           ),
         ),
 
-        // thumb zones: left drives and strafes, right turns
-        Positioned(
-          key: const ValueKey('stick-move'),
-          left: 0,
-          top: top,
-          bottom: 0,
-          width: size.width * 0.46,
-          child: StickZone(
-            home: const Alignment(-0.2, 0.55),
-            icon: Icons.open_with_rounded,
-            color: modeColor,
-            onChanged: (value) => _move = value,
-          ),
-        ),
-        Positioned(
-          key: const ValueKey('stick-turn'),
-          right: 0,
-          top: top,
-          bottom: 0,
-          width: size.width * 0.46,
-          child: StickZone(
-            home: const Alignment(0.05, 0.72),
-            icon: Icons.threesixty_rounded,
-            horizontalOnly: true,
-            color: modeColor,
-            onChanged: (value) => _turn = value,
-          ),
-        ),
-
         // the small view: tap it to swap
         Positioned(
           key: ValueKey(mapMain ? 'camera' : 'map'),
@@ -493,55 +457,55 @@ class _DriveScreenState extends State<DriveScreen> {
           key: const ValueKey('view-buttons'),
           left: 10,
           top: top + insetHeight + 8,
-          child: _viewButtons(),
+          // the map listens to the viewport itself: a pinch does not rebuild the whole screen
+          child: ListenableBuilder(listenable: _viewport, builder: (context, _) => _viewButtons()),
         ),
 
         Positioned(key: const ValueKey('top'), left: 8, right: 8, top: 6, child: _topBar()),
         Positioned(
-          key: const ValueKey('toolbar'),
-          left: middleLeft,
-          right: middleRight,
-          top: top,
-          child: Center(child: _toolbar()),
-        ),
-        Positioned(
           key: const ValueKey('right'),
           right: 10,
           top: top,
-          // the robot actions stay clear of the right thumb
-          child: _rightRail(size.height * 0.72 - top - 70),
+          child: _rightRail(size.height - top - 80),
         ),
-        if (status != null)
-          Positioned(
-            key: const ValueKey('status'),
-            left: size.width * 0.2,
-            right: size.width * 0.2,
-            bottom: 12,
-            child: IgnorePointer(child: Center(child: status)),
-          ),
-
-        if (state.estop)
-          Positioned(
-            key: const ValueKey('estop'),
-            top: top + 70,
-            left: middleLeft,
-            right: middleRight,
-            child: _estopBanner(),
-          ),
+        // mapping and patrol, bottom centre (clear of the right rail)
         Positioned(
-          key: const ValueKey('toast'),
-          top: state.estop ? top + 122 : top + 70,
+          key: const ValueKey('toolbar'),
+          left: middleRight,
+          right: middleRight,
+          bottom: 10,
+          child: Center(child: _toolbar()),
+        ),
+        // recording / patrol state, e-stop and messages under the top bar
+        Positioned(
+          key: const ValueKey('notices'),
+          top: top,
           left: middleLeft,
           right: middleRight,
-          child: IgnorePointer(
-            child: Center(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _toast == null
-                    ? const SizedBox.shrink()
-                    : ToastView(key: ValueKey(_toast), toast: _toast!),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (status != null)
+                IgnorePointer(
+                  key: const ValueKey('status'),
+                  child: Padding(padding: const EdgeInsets.only(bottom: 8), child: status),
+                ),
+              if (state.estop)
+                Padding(
+                  key: const ValueKey('estop'),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _estopBanner(),
+                ),
+              IgnorePointer(
+                key: const ValueKey('toast'),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _toast == null
+                      ? const SizedBox.shrink()
+                      : ToastView(key: ValueKey(_toast), toast: _toast!),
+                ),
               ),
-            ),
+            ],
           ),
         ),
 
@@ -689,8 +653,10 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  /// Under the small view: swap the two views, and keep the robot centred on the map.
+  /// Under the small view: swap the two views; the map follows the robot or shows the route.
   Widget _viewButtons() {
+    final follow = _viewport.mode == MapMode.follow;
+    final fit = _viewport.mode == MapMode.fit;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -705,9 +671,18 @@ class _DriveScreenState extends State<DriveScreen> {
           icon: Icons.gps_fixed_rounded,
           size: 36,
           label: s.t('map_follow'),
-          tint: _follow ? Palette.auto : Palette.text,
-          active: _follow,
-          onPressed: () => setState(() => _follow = !_follow),
+          tint: follow ? Palette.auto : Palette.text,
+          active: follow,
+          onPressed: _viewport.follow,
+        ),
+        const SizedBox(width: 8),
+        HudButton(
+          icon: Icons.zoom_out_map_rounded,
+          size: 36,
+          label: s.t('map_fit'),
+          tint: fit ? Palette.auto : Palette.text,
+          active: fit,
+          onPressed: _viewport.fit,
         ),
       ],
     );
@@ -833,7 +808,7 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  /// Recording or patrol state, at the bottom between the thumbs.
+  /// Recording or patrol state, under the top bar.
   Widget? _statusPill() {
     final state = client.state;
     final since = _recordingSince;

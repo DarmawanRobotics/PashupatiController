@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
@@ -163,11 +162,24 @@ class TeleopClient extends ChangeNotifier {
   Future<RawDatagramSocket> _bind() async {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      _growReceiveBuffer(socket);
       socket.listen(_onSocketEvent, onError: (Object _) {});
       return socket;
     } on SocketException {
       _binding = null; // try again on the next connect
       rethrow;
+    }
+  }
+
+  /// Room for a whole camera frame, which arrives as one burst of datagrams (the default buffer
+  /// overflows and one lost datagram loses the frame).
+  static void _growReceiveBuffer(RawDatagramSocket socket) {
+    if (!Platform.isAndroid && !Platform.isLinux) return;
+    const soRcvbuf = 8; // SO_RCVBUF on Linux and Android
+    try {
+      socket.setRawOption(RawSocketOption.fromInt(RawSocketOption.levelSocket, soRcvbuf, 1 << 20));
+    } on Exception {
+      // keep the system default
     }
   }
 
