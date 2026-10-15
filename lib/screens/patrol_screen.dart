@@ -401,14 +401,18 @@ class _PatrolScreenState extends State<PatrolScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(t('section_people'), style: Txt.title),
-          SwitchListTile(
-            key: const ValueKey('people-switch'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(t('people_switch'), style: Txt.body),
-            subtitle: Text(t('people_switch_hint'), style: Txt.small),
-            value: people?.on ?? false,
-            onChanged: live && !_busy.contains('people') ? _setPeople : null,
+          // its own Material: the panel's colour would hide the tile's ink
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              key: const ValueKey('people-switch'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(t('people_switch'), style: Txt.body),
+              subtitle: Text(t('people_switch_hint'), style: Txt.small),
+              value: people?.on ?? false,
+              onChanged: live && !_busy.contains('people') ? _setPeople : null,
+            ),
           ),
           for (final line in lines)
             Padding(
