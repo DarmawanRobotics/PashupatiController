@@ -125,6 +125,14 @@ const _en = <String, String>{
   'pace_hint_interval': 'One inspection every few seconds: less load on the robot.',
   'pace_hint_stops': 'Only at the stop points of the route.',
   'every': 'Every',
+  'every_s': 'Every {n} s',
+  'every_min': 'Every {n} min',
+  'queue_line': 'Queue: {n} of {m} frames waiting',
+  'queue_glance': '{n} frames queued',
+  'waited': 'waited {n} s',
+  'pace_hint_queue':
+      'A frame every interval, also while the AI is busy: they wait in a queue, '
+      'first in first out.',
   'model': 'Model',
   'models': 'Models',
   'model_active': 'In use',
@@ -320,6 +328,14 @@ const _id = <String, String>{
   'pace_hint_interval': 'Satu inspeksi tiap beberapa detik: beban robot lebih ringan.',
   'pace_hint_stops': 'Hanya di titik stop rute.',
   'every': 'Setiap',
+  'every_s': 'Setiap {n} dtk',
+  'every_min': 'Setiap {n} mnt',
+  'queue_line': 'Antrean: {n} dari {m} foto menunggu',
+  'queue_glance': '{n} foto antre',
+  'waited': 'antre {n} dtk',
+  'pace_hint_queue':
+      'Foto diambil tiap interval walau AI sibuk: menunggu di antrean, '
+      'yang pertama masuk diproses duluan.',
   'model': 'Model',
   'models': 'Model',
   'model_active': 'Dipakai',

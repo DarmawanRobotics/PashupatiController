@@ -57,11 +57,14 @@ void main() {
       'inspection': {
         ..._running,
         'last': {'cat': 'trash', 'reported': true, 'age': 75},
+        'queue': 7,
+        'queue_max': 50,
       },
       'people': {'on': false, 'state': 'off'},
       'health': {'ok': true, 'cpu': 95.0, 'ram': 40.0},
     });
     expect(find.text('Sampah · 1 mnt lalu'), findsOneWidget);
+    expect(find.text('7 foto antre'), findsOneWidget);
     expect(find.text('Orang: mati'), findsOneWidget);
     expect(find.text('CPU 95%  GPU –'), findsOneWidget);
     expect(find.text('RAM 40%'), findsOneWidget);

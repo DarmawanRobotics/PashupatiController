@@ -136,13 +136,33 @@ void main() {
     expect(find.textContaining('PEOPLE=true'), findsOneWidget);
   });
 
-  testWidgets('the interval pace offers the seconds between inspections', (tester) async {
+  testWidgets('the interval slider sets the seconds between frames; the queue shows', (
+    tester,
+  ) async {
     final client = robotClient({
-      'inspection': {'on': true, 'state': 'running', 'model': 'moondream', 'interval': 10},
+      'inspection': {
+        'on': true,
+        'state': 'running',
+        'model': 'moondream',
+        'interval': 10,
+        'queue': 3,
+        'queue_max': 50,
+        'last': {'cat': 'none', 'age': 2, 'waited': 14},
+      },
     });
     addTearDown(client.dispose);
     final robot = await openPage(tester, client);
-    await tapInColumn(tester, find.text('30 s'));
-    expect(robot.sent['inspection_set'], {'interval': 30.0});
+    expect(find.text('Every 10 s'), findsOneWidget);
+    expect(find.text('Queue: 3 of 50 frames waiting'), findsOneWidget);
+    expect(find.textContaining('waited 14 s'), findsOneWidget);
+
+    final slider = find.byKey(const ValueKey('interval-slider'));
+    await tester.scrollUntilVisible(slider, 80, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.drag(slider, const Offset(60, 0));
+    await tester.pumpAndSettle();
+    final sent = robot.sent['inspection_set']!['interval'] as double;
+    expect(sent, greaterThan(10.0));
+    expect(const [15.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0, 180.0, 300.0], contains(sent));
   });
 }

@@ -33,6 +33,7 @@ class GlancePanel extends StatelessWidget {
     final load = state.load;
     final rows = <Widget>[
       if (inspection != null) _inspectionRow(inspection),
+      if (inspection != null && inspection.queue > 0) _queueRow(inspection),
       if (people != null) _peopleRow(people),
       if (showLoad && load != null) ..._loadRows(load),
     ];
@@ -78,6 +79,15 @@ class GlancePanel extends StatelessWidget {
       default:
         return _row(Icons.error_rounded, Palette.stop, t('ai_error'));
     }
+  }
+
+  Widget _queueRow(InspectionStatus inspection) {
+    final full = inspection.queueMax > 0 && inspection.queue >= inspection.queueMax * 0.8;
+    return _row(
+      Icons.photo_library_rounded,
+      full ? Palette.caution : Palette.muted,
+      t('queue_glance', {'n': inspection.queue}),
+    );
   }
 
   Widget _peopleRow(PeopleStatus people) {

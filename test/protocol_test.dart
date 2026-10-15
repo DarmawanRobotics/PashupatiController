@@ -155,6 +155,19 @@ void main() {
     expect(InspectionStatus.fromJson({'last': {}})!.last!.clear, isTrue);
   });
 
+  test('the inspection queue and how long a frame waited', () {
+    final status = InspectionStatus.fromJson({
+      'on': true,
+      'state': 'running',
+      'interval': 5,
+      'queue': 4,
+      'queue_max': 50,
+      'last': {'cat': 'none', 'waited': 12},
+    })!;
+    expect((status.queue, status.queueMax, status.last!.waited), (4, 50, 12));
+    expect(InspectionStatus.fromJson({'on': true})!.queue, 0);
+  });
+
   test('people and the robot load in the state', () {
     final state = RobotState.fromJson({
       'people': {'on': true, 'state': 'running', 'count': 2, 'ms': 90, 'age': 1, 'backend': 'cpu',

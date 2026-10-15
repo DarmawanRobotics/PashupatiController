@@ -42,13 +42,17 @@ class PatrolScreen extends StatefulWidget {
 
 class _PatrolScreenState extends State<PatrolScreen> {
   /// Seconds between two inspections in the interval pace.
-  static const _intervals = [2.0, 5.0, 10.0, 30.0, 60.0];
+  /// Seconds between interval frames the slider steps through.
+  static const _intervals = [
+    1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0, 180.0, 300.0,
+  ];
 
   List<InspectionModel>? _models;
   String? _modelsError;
   final Set<String> _busy = {};
   String? _switchingTo;
   double? _speedDraft;
+  int? _intervalDraft; // index into _intervals while the slider is dragged
 
   TeleopClient get client => widget.client;
 
@@ -109,9 +113,14 @@ class _PatrolScreenState extends State<PatrolScreen> {
     _send('pace', 'inspection_set', {'interval': interval}, t('pace'));
   }
 
-  void _setInterval(double seconds) {
-    _send('pace', 'inspection_set', {'interval': seconds}, t('pace'));
+  Future<void> _setInterval(double seconds) async {
+    await _send('pace', 'inspection_set', {'interval': seconds}, t('pace'));
+    if (mounted) setState(() => _intervalDraft = null);
   }
+
+  String _every(double seconds) => seconds >= 120 && seconds % 60 == 0
+      ? t('every_min', {'n': seconds ~/ 60})
+      : t('every_s', {'n': seconds.round()});
 
   Future<void> _setModel(String name) async {
     setState(() => _switchingTo = name);
@@ -125,9 +134,14 @@ class _PatrolScreenState extends State<PatrolScreen> {
     if (mounted) setState(() => _speedDraft = null);
   }
 
-  /// The offered interval closest to [seconds].
-  static double _nearest(double seconds) =>
-      _intervals.reduce((a, b) => (a - seconds).abs() <= (b - seconds).abs() ? a : b);
+  /// The index of the offered interval closest to [seconds].
+  static int _nearest(double seconds) {
+    var best = 0;
+    for (var i = 1; i < _intervals.length; i++) {
+      if ((_intervals[i] - seconds).abs() < (_intervals[best] - seconds).abs()) best = i;
+    }
+    return best;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,25 +234,30 @@ class _PatrolScreenState extends State<PatrolScreen> {
           ),
           hint: t('pace_hint_$pace'),
         ),
-        if (pace == 'interval')
-          _choice(
-            t('every'),
-            SegmentedButton<double>(
-              segments: [
-                for (final seconds in _intervals)
-                  ButtonSegment(value: seconds, label: Text('${seconds.round()} s')),
-              ],
-              selected: {_nearest(current)},
-              showSelectedIcon: false,
-              expandedInsets: EdgeInsets.zero,
-              onSelectionChanged: live && !_busy.contains('pace')
-                  ? (selection) => _setInterval(selection.first)
-                  : null,
-            ),
-          ),
+        if (pace == 'interval') _intervalSlider(current, live),
         _section(t('section_model')),
         ..._modelTiles(status, live),
       ],
+    );
+  }
+
+  /// How often interval mode takes a frame for the queue: 1 s to 5 min.
+  Widget _intervalSlider(double current, bool live) {
+    final index = _intervalDraft ?? _nearest(current);
+    final seconds = _intervalDraft == null ? current : _intervals[index];
+    final enabled = live && !_busy.contains('pace');
+    return _choice(
+      _every(seconds),
+      Slider(
+        key: const ValueKey('interval-slider'),
+        value: index.toDouble(),
+        max: (_intervals.length - 1).toDouble(),
+        divisions: _intervals.length - 1,
+        label: _every(_intervals[index]),
+        onChanged: enabled ? (v) => setState(() => _intervalDraft = v.round()) : null,
+        onChangeEnd: enabled ? (v) => _setInterval(_intervals[v.round()]) : null,
+      ),
+      hint: t('pace_hint_queue'),
     );
   }
 
@@ -250,6 +269,9 @@ class _PatrolScreenState extends State<PatrolScreen> {
     } else {
       if (status.model.isNotEmpty) lines.add(status.model);
       lines.add(t('inspection_counts', {'n': status.count, 'm': status.reports}));
+      if (status.queue > 0 || (status.pace == 'interval' && status.queueMax > 0)) {
+        lines.add(t('queue_line', {'n': status.queue, 'm': status.queueMax}));
+      }
       final last = status.last;
       if (last != null) lines.add(_lastText(last));
       if (status.state == 'error' && status.error.isNotEmpty) lines.add(status.error);
@@ -288,6 +310,7 @@ class _PatrolScreenState extends State<PatrolScreen> {
       t('last_result', {'what': what}),
       '${(last.latencyMs / 1000).toStringAsFixed(1)} s',
       if (age != null) age < 60 ? t('ago_s', {'n': age}) : t('ago_min', {'n': age ~/ 60}),
+      if (last.waited > 1) t('waited', {'n': last.waited}),
       if (last.reported) t('reported'),
     ];
     final text = parts.join('  ·  ');

@@ -322,6 +322,8 @@ class InspectionStatus {
     this.error = '',
     this.count = 0,
     this.reports = 0,
+    this.queue = 0,
+    this.queueMax = 0,
     this.last,
   });
 
@@ -337,6 +339,8 @@ class InspectionStatus {
       error: _str(json['error']),
       count: _num(json['count'])?.round() ?? 0,
       reports: _num(json['reports'])?.round() ?? 0,
+      queue: _num(json['queue'])?.round() ?? 0,
+      queueMax: _num(json['queue_max'])?.round() ?? 0,
       last: last is Map ? InspectionResult.fromJson(last) : null,
     );
   }
@@ -356,6 +360,10 @@ class InspectionStatus {
 
   /// Findings sent to NETRA since the detector started.
   final int reports;
+
+  /// Interval mode: frames waiting for the model (first in first out), of at most [queueMax].
+  final int queue;
+  final int queueMax;
   final InspectionResult? last;
 
   /// continuous, interval or stops.
@@ -371,6 +379,7 @@ class InspectionResult {
     this.age,
     this.description = '',
     this.source = '',
+    this.waited = 0,
   });
 
   factory InspectionResult.fromJson(Map<dynamic, dynamic> json) => InspectionResult(
@@ -380,6 +389,7 @@ class InspectionResult {
     age: _num(json['age'])?.round(),
     description: _str(json['desc']),
     source: _str(json['source']),
+    waited: _num(json['waited'])?.round() ?? 0,
   );
 
   /// What the model saw: none for a clean floor, else a category such as trash or spill.
@@ -395,6 +405,9 @@ class InspectionResult {
 
   /// periodic or stop_point.
   final String source;
+
+  /// Seconds the frame waited in the interval queue before the model looked at it.
+  final int waited;
 
   bool get clear => category.isEmpty || category == 'none';
 }
