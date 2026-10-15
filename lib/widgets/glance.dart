@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../l10n.dart';
@@ -97,29 +99,29 @@ class GlancePanel extends StatelessWidget {
 
   List<Widget> _loadRows(SystemLoad load) {
     String percent(double? value) => value == null ? '–' : '${value.round()}%';
-    Color tone(double? value, double busy, double full) => value == null || value < busy
-        ? Palette.muted
-        : (value < full ? Palette.caution : Palette.stop);
-    final busiest = [load.cpu, load.gpu, load.ram].whereType<double>().fold<double>(
-      0,
-      (a, b) => a > b ? a : b,
-    );
+    // 0 fine, 1 busy, 2 nearly full
+    int level(double? value, double busy, double full) =>
+        value == null || value < busy ? 0 : (value < full ? 1 : 2);
+    const tones = [Palette.muted, Palette.caution, Palette.stop];
+    final compute = [load.cpu, load.gpu].whereType<double>().fold<double>(0, math.max);
     final used = load.ramUsed;
     final total = load.ramTotal;
     final ram = used != null && total != null
-        ? '${used.toStringAsFixed(1)}/${total.toStringAsFixed(0)} GB'
+        ? '${used.toStringAsFixed(1)}/${total.toStringAsFixed(1)} GB'
         : percent(load.ram);
     final temp = load.temp;
+    final memory = math.max(level(load.ram, 80, 90), level(temp, 75, 85));
     return [
       _row(
         Icons.memory_rounded,
-        tone(busiest, 75, 90),
+        tones[level(compute, 75, 90)],
         'CPU ${percent(load.cpu)}  GPU ${percent(load.gpu)}',
       ),
       _row(
-        Icons.thermostat_rounded,
-        tone(temp, 75, 85),
+        Icons.developer_board_rounded,
+        tones[memory],
         temp == null ? 'RAM $ram' : 'RAM $ram  ${temp.round()}°C',
+        strong: memory == 2,
       ),
     ];
   }

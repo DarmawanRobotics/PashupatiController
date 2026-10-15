@@ -49,7 +49,7 @@ void main() {
     expect(find.text('Bersih · 3 dtk lalu'), findsOneWidget);
     expect(find.text('4 orang'), findsOneWidget);
     expect(find.text('CPU 23%  GPU 41%'), findsOneWidget);
-    expect(find.text('RAM 5.1/15 GB  53°C'), findsOneWidget);
+    expect(find.text('RAM 5.1/15.3 GB  53°C'), findsOneWidget);
   });
 
   testWidgets('a finding stands out; off and no-GPU states read plainly', (tester) async {
@@ -69,6 +69,14 @@ void main() {
     await show(tester, {'health': {'ok': true, 'cpu': 10.0}}, showLoad: false);
     expect(find.byType(GlancePanel), findsOneWidget);
     expect(find.textContaining('CPU'), findsNothing);
+  });
+
+  testWidgets('nearly full memory stands out in red', (tester) async {
+    await show(tester, {
+      'health': {'ok': false, 'cpu': 20.0, 'ram': 98.7, 'ram_used': 15.1, 'ram_total': 15.3},
+    });
+    final text = tester.widget<Text>(find.text('RAM 15.1/15.3 GB'));
+    expect(text.style?.color, Palette.stop);
   });
 
   testWidgets('without inspection, people or load figures nothing shows', (tester) async {
