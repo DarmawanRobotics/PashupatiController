@@ -557,6 +557,7 @@ class _DriveScreenState extends State<DriveScreen> {
     final signal = client.signal;
     final rtt = client.rttMs;
     final field = _fieldChip(state.field);
+    final loc = _localizationChip(state);
 
     return Row(
       children: [
@@ -636,6 +637,8 @@ class _DriveScreenState extends State<DriveScreen> {
                   ),
                   const SizedBox(width: 6),
                 ],
+                Flexible(child: loc),
+                const SizedBox(width: 6),
                 if (field != null) ...[
                   Flexible(child: field),
                   const SizedBox(width: 6),
@@ -653,6 +656,46 @@ class _DriveScreenState extends State<DriveScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Localization source: start pose (identity), AprilTag, RViz pose or none; tap for details.
+  Widget _localizationChip(RobotState state) {
+    final kind = state.localizationKind;
+    final (color, icon) = switch (kind) {
+      'tag' => (Palette.ok, Icons.qr_code_2_rounded),
+      'pose' => (Palette.ok, Icons.ads_click_rounded),
+      'start' => (Palette.caution, Icons.home_rounded),
+      'other' => (Palette.ok, Icons.my_location_rounded),
+      _ => (Palette.stop, Icons.location_disabled_rounded),
+    };
+    final tag = state.localizationTag;
+    final label = kind == 'tag' && tag != null
+        ? s.t('loc_tag_named', {'tag': tag})
+        : s.t('loc_$kind');
+    return HudChip(
+      border: color.withValues(alpha: 0.5),
+      onTap: () => _show(
+        Toast(
+          kind == 'none' ? s.t('not_localized') : state.localization,
+          color: color,
+          icon: icon,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: Txt.label.copyWith(color: color),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

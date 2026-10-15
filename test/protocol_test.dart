@@ -119,6 +119,17 @@ void main() {
     expect(tags.first.corners[2], closeTo(0.3, 1e-9));
   });
 
+  test('localization source kinds', () {
+    RobotState loc(String v) => RobotState.fromJson({'localization': v});
+    expect(loc('none').localizationKind, 'none');
+    expect(loc('start position').localizationKind, 'start');
+    expect(loc('RViz 2D Pose Estimate').localizationKind, 'pose');
+    final tag = loc('apriltag "base_map" (auto start)');
+    expect(tag.localizationKind, 'tag');
+    expect(tag.localizationTag, 'base_map');
+    expect(loc('start position').localizationTag, isNull);
+  });
+
   test('welcome without robot_commands derives them from commands', () {
     final welcome = Welcome.fromJson({
       'commands': ['estop', 'nav_start', 'stand_up', 'sit_down', 'list_routes'],

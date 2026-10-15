@@ -244,6 +244,18 @@ class RobotState {
 
   bool get remote => mode == 'remote';
   bool get localized => localization.isNotEmpty && localization != 'none';
+
+  /// Where map->odom comes from: none, start (identity at the start pose), tag, pose (RViz), other.
+  String get localizationKind {
+    if (!localized) return 'none';
+    if (localization.startsWith('apriltag')) return 'tag';
+    if (localization.startsWith('start')) return 'start';
+    if (localization.contains('Pose Estimate')) return 'pose';
+    return 'other';
+  }
+
+  /// The tag frame of a tag localization ('base_map' from 'apriltag "base_map" (auto start)').
+  String? get localizationTag => RegExp(r'"([^"]+)"').firstMatch(localization)?.group(1);
   bool get navPaused => nav == 'PAUSED';
   bool get navActive => !const {'NAV_INACTIVE', 'NO_PATH', 'PAUSED'}.contains(nav);
 }
