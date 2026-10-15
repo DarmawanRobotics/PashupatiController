@@ -925,7 +925,7 @@ class _DriveScreenState extends State<DriveScreen> {
       final label = s.navLabel(state.nav);
       text = state.navMessage.isEmpty ? label : '$label  ·  ${state.navMessage}';
       color = switch (state.nav) {
-        'FOLLOWING' || 'APPROACHING' || 'DWELLING' => Palette.auto,
+        'FOLLOWING' || 'JOINING' || 'APPROACHING' || 'DWELLING' => Palette.auto,
         'GOAL_REACHED' => Palette.ok,
         'PAUSED' || 'NO_PATH' || 'TF_UNAVAILABLE' => Palette.caution,
         _ => Palette.stop,
