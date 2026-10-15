@@ -157,10 +157,13 @@ void main() {
 
   test('people and the robot load in the state', () {
     final state = RobotState.fromJson({
-      'people': {'on': true, 'state': 'running', 'count': 2, 'ms': 90, 'age': 1, 'backend': 'cpu'},
+      'people': {'on': true, 'state': 'running', 'count': 2, 'ms': 90, 'age': 1, 'backend': 'cpu',
+        'boxes': [[0.1, 0.2, 0.3, 0.9, 0.87], [1, 2], 'x']},
       'health': {'ok': true, 'issues': [], 'cpu': 12.0, 'gpu': null, 'ram_used': 4.2},
     });
     expect(state.people!.count, 2);
+    expect(state.people!.boxes.single.y2, 0.9);
+    expect(state.people!.boxes.single.score, 0.87);
     expect(state.people!.latencyMs, 90);
     expect(state.load!.cpu, 12.0);
     expect(state.load!.gpu, isNull);

@@ -20,6 +20,7 @@ class CameraView extends StatefulWidget {
     required this.offText,
     required this.waitText,
     this.tags = const [],
+    this.people = const [],
     this.webrtc,
   });
 
@@ -28,6 +29,9 @@ class CameraView extends StatefulWidget {
   final String offText;
   final String waitText;
   final List<Tag> tags;
+
+  /// Person boxes drawn over the video.
+  final List<PersonBox> people;
 
   /// The playing WebRTC video; null shows the JPEG frames.
   final RTCVideoRenderer? webrtc;
@@ -123,7 +127,8 @@ class _CameraViewState extends State<CameraView> {
       fit: StackFit.expand,
       children: [
         RawImage(image: image, fit: BoxFit.cover, filterQuality: FilterQuality.low),
-        if (widget.tags.isNotEmpty) CustomPaint(painter: _TagPainter(widget.tags, size)),
+        if (widget.tags.isNotEmpty || widget.people.isNotEmpty)
+          CustomPaint(painter: _TagPainter(widget.tags, size, widget.people)),
       ],
     );
   }
@@ -134,14 +139,14 @@ class _CameraViewState extends State<CameraView> {
       fit: StackFit.expand,
       children: [
         RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
-        if (widget.tags.isNotEmpty)
+        if (widget.tags.isNotEmpty || widget.people.isNotEmpty)
           ValueListenableBuilder<RTCVideoValue>(
             valueListenable: renderer,
             builder: (context, value, _) {
               final size = Size(value.width, value.height); // the robot sends it unrotated
               return size.isEmpty
                   ? const SizedBox.shrink()
-                  : CustomPaint(painter: _TagPainter(widget.tags, size));
+                  : CustomPaint(painter: _TagPainter(widget.tags, size, widget.people));
             },
           ),
       ],
@@ -149,11 +154,12 @@ class _CameraViewState extends State<CameraView> {
   }
 }
 
-/// AprilTag outlines and ids over the video, cropped the way BoxFit.cover crops the frame.
+/// AprilTag outlines and ids and person boxes over the video, cropped the way BoxFit.cover crops the frame.
 class _TagPainter extends CustomPainter {
-  _TagPainter(this.tags, this.imageSize);
+  _TagPainter(this.tags, this.imageSize, [this.people = const []]);
 
   final List<Tag> tags;
+  final List<PersonBox> people;
   final Size imageSize;
 
   @override
@@ -179,10 +185,30 @@ class _TagPainter extends CustomPainter {
       final bottom = corners.reduce((a, b) => a.dy >= b.dy ? a : b);
       _label(canvas, 'ID ${tag.id}', top, bottom);
     }
+    final person = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..color = Palette.caution;
+    for (final p in people) {
+      final a = toView(p.x1, p.y1), b = toView(p.x2, p.y2);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromPoints(a, b), const Radius.circular(4)),
+        person,
+      );
+      final left = Offset(a.dx < b.dx ? a.dx : b.dx, a.dy < b.dy ? a.dy : b.dy);
+      final under = Offset(left.dx, a.dy > b.dy ? a.dy : b.dy);
+      _label(canvas, '${(p.score * 100).round()}%', left, under, Palette.caution);
+    }
   }
 
   /// The id above the tag, or under it when the tag is at the top edge.
-  void _label(Canvas canvas, String text, Offset top, Offset bottom) {
+  void _label(
+    Canvas canvas,
+    String text,
+    Offset top,
+    Offset bottom, [
+    Color color = Palette.auto,
+  ]) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: Txt.label.copyWith(color: Palette.night)),
       textDirection: TextDirection.ltr,
@@ -192,14 +218,15 @@ class _TagPainter extends CustomPainter {
     if (box.top < 4) box = Rect.fromLTWH(bottom.dx, bottom.dy + 4, width, height);
     canvas.drawRRect(
       RRect.fromRectAndRadius(box, const Radius.circular(4)),
-      Paint()..color = Palette.auto,
+      Paint()..color = color,
     );
     painter.paint(canvas, box.topLeft + const Offset(5, 2));
     painter.dispose();
   }
 
   @override
-  bool shouldRepaint(_TagPainter old) => old.tags != tags || old.imageSize != imageSize;
+  bool shouldRepaint(_TagPainter old) =>
+      old.tags != tags || old.people != people || old.imageSize != imageSize;
 }
 
 /// Dark floor grid shown when there is no video.

@@ -461,6 +461,7 @@ class PeopleStatus {
     this.age,
     this.backend = '',
     this.error = '',
+    this.boxes = const [],
   });
 
   /// Null unless the robot sent a people object.
@@ -474,10 +475,26 @@ class PeopleStatus {
       age: _num(json['age'])?.round(),
       backend: _str(json['backend']),
       error: _str(json['error']),
+      boxes: _personBoxes(json['boxes']),
     );
   }
 
+  static List<PersonBox> _personBoxes(Object? json) {
+    if (json is! List) return const [];
+    final boxes = <PersonBox>[];
+    for (final row in json) {
+      if (row is! List || row.length != 5) continue;
+      final v = [for (final x in row) _num(x)];
+      if (v.contains(null)) continue;
+      boxes.add(PersonBox(v[0]!, v[1]!, v[2]!, v[3]!, v[4]!));
+    }
+    return boxes;
+  }
+
   final bool on;
+
+  /// People in the last frame, as fractions of the image; empty when that frame is old.
+  final List<PersonBox> boxes;
 
   /// loading, running, off, error, or offline (the robot stopped hearing from the detector).
   final String state;
@@ -521,4 +538,11 @@ class SystemLoad {
   final double? ramUsed;
   final double? ramTotal;
   final double? temp;
+}
+
+/// A detected person: corners as fractions of the camera image, and the detector's score.
+class PersonBox {
+  const PersonBox(this.x1, this.y1, this.x2, this.y2, this.score);
+
+  final double x1, y1, x2, y2, score;
 }

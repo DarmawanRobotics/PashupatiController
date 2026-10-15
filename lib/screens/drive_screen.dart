@@ -437,6 +437,9 @@ class _DriveScreenState extends State<DriveScreen> {
       offText: s.t('camera_off'),
       waitText: s.t('camera_wait'),
       tags: state.tags,
+      people: state.people?.on == true && state.people?.state == 'running'
+          ? state.people!.boxes
+          : const [],
       webrtc: s.video.renderer,
     );
     final map = MapView(
