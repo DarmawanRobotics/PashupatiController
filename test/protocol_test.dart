@@ -131,6 +131,29 @@ void main() {
       'robot_commands': ['sdk_control_right', 'stand_up'],
     });
     expect(explicit.robotCommands.first, 'sdk_control_right');
+    expect(explicit.video, isNull); // an older robot: JPEG frames only
+  });
+
+  test('welcome offers the WebRTC video of the robot', () {
+    final welcome = Welcome.fromJson({
+      'commands': ['estop'],
+      'video': {'port': 8890, 'path': 'camera'},
+    });
+    expect(
+      welcome.video!.whep('192.168.234.234').toString(),
+      'http://192.168.234.234:8890/camera/whep',
+    );
+    expect(welcome.video!.whep('robot.local').path, '/camera/whep');
+    for (final bad in [
+      {'port': 0, 'path': 'camera'},
+      {'port': '8890', 'path': 'camera'},
+      {'port': 8890, 'path': ''},
+      {'port': 8890, 'path': '../admin'},
+      {'port': 8890, 'path': 'cam?x=1'},
+      'camera',
+    ]) {
+      expect(Welcome.fromJson({'video': bad}).video, isNull, reason: '$bad');
+    }
   });
 
   test('stick dead zone and rescale', () {

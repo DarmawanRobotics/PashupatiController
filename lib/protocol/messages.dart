@@ -71,6 +71,31 @@ class Beacon {
   final DateTime seen;
 }
 
+/// WebRTC video the robot offers (MediaMTX, WHEP): http://<robot>:<port>/<path>/whep.
+class VideoOffer {
+  const VideoOffer(this.port, this.path);
+
+  /// Null unless `welcome.video` names a valid port and path.
+  static VideoOffer? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final port = json['port'];
+    final path = json['path'];
+    if (port is! int || port <= 0 || port > 65535) return null;
+    if (path is! String || !RegExp(r'^[A-Za-z0-9_.~-]+(/[A-Za-z0-9_.~-]+)*$').hasMatch(path)) {
+      return null;
+    }
+    if (path.split('/').any((segment) => segment == '.' || segment == '..')) return null;
+    return VideoOffer(port, path);
+  }
+
+  final int port;
+  final String path;
+
+  /// The WHEP endpoint on the robot at [host] (the address the teleop link uses).
+  Uri whep(String host) =>
+      Uri(scheme: 'http', host: host, port: port, pathSegments: [...path.split('/'), 'whep']);
+}
+
 /// The robot's answer to `hello`.
 class Welcome {
   const Welcome({
@@ -78,6 +103,7 @@ class Welcome {
     required this.commands,
     required this.robotCommands,
     required this.limits,
+    this.video,
   });
 
   factory Welcome.fromJson(Map<String, dynamic> json) {
@@ -94,6 +120,7 @@ class Welcome {
       commands: commands,
       robotCommands: robot,
       limits: limits,
+      video: VideoOffer.fromJson(json['video']),
     );
   }
 
@@ -105,6 +132,9 @@ class Welcome {
 
   /// Speed maxima [vx m/s, vy m/s, wz rad/s].
   final List<double> limits;
+
+  /// WebRTC video, when the robot runs MediaMTX; else the camera comes as JPEG frames only.
+  final VideoOffer? video;
 
   bool has(String command) => commands.contains(command);
 }

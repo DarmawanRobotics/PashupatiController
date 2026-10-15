@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'input/gamepad_input.dart';
 import 'net/discovery.dart';
 import 'net/teleop_client.dart';
+import 'net/webrtc_video.dart';
 import 'screens/connect_screen.dart';
 import 'settings.dart';
 import 'theme.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
     client: TeleopClient(),
     discovery: Discovery(),
     gamepad: GamepadInput()..start(),
+    video: WebRtcVideo(),
   );
   runApp(TeleopApp(services: services));
 }

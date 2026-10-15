@@ -15,6 +15,8 @@ there is no ROS on the handheld.
   sit down, gaits, ...) as icons on the right; anything that moves the robot on its own asks first.
 - Driving on the physical sticks only, AUTO / REMOTE switch, live battery, link, protective field
   and health.
+- The camera as H.264 over WebRTC when the robot runs MediaMTX: smooth, about 0.1 s behind, a
+  fraction of the Wi-Fi. JPEG frames over the teleop link otherwise, and whenever WebRTC fails.
 - Settings under the gear: speed level, video, lidar on the map, language, inspection time.
 - Finds robots on the LAN by itself; Indonesian and English.
 
@@ -23,17 +25,15 @@ there is no ROS on the handheld.
 Flutter 3.35 or newer, the handheld on USB with `adb devices` listing it.
 
 ```bash
-git clone git@github.com:DarmawanRobotics/flutter_teleop.git && cd flutter_teleop
-flutter create . --org com.darmawanrobotics --project-name flutter_teleop --platforms android --empty
+git clone git@github.com:DarmawanRobotics/PashupatiController.git && cd PashupatiController
 flutter pub get
 flutter test
-flutter run --release
+flutter run --release        # or: flutter build apk --release && adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-`flutter create .` runs once: it generates the Gradle project around `lib/` and keeps the files
-that are already here (`AndroidManifest.xml` with the network permission and landscape lock,
-`MainActivity.kt` with the gamepad hooks and keep-screen-on). `--empty` leaves out the counter-app
-test, which would not compile here. Commit what it generates.
+The Android project is in the repository (`AndroidManifest.xml` with the network permissions and
+landscape lock, `MainActivity.kt` with the gamepad hooks and keep-screen-on). After a dependency
+change, commit the `pubspec.lock` that `flutter pub get` writes.
 
 ## Robot side
 
@@ -49,6 +49,11 @@ teleop_udp_node:
 
 The default robot is `192.168.234.234:9870`; other robots on the same network appear in the list
 on their own.
+
+**WebRTC video.** `script/setup.sh install webrtc` on the robot installs MediaMTX and GStreamer;
+the robot then offers the video in its `welcome` and the app plays it (WHEP on TCP 8890, media on
+UDP 8190, the same token). The robot encodes only while someone watches. Settings, under *Camera
+video*, says which one plays: WebRTC, or JPEG frames and why.
 
 ## Controls
 
@@ -77,7 +82,8 @@ hidden: tap the version on the start screen three times.
 ```
 lib/
 ├── protocol/   messages.dart (JSON), streams.dart (chunked camera / lidar / route)
-├── net/        teleop_client.dart (session, commands, joystick), discovery.dart
+├── net/        teleop_client.dart (session, commands, joystick), discovery.dart,
+│               webrtc_video.dart + whep.dart (camera over WebRTC)
 ├── input/      gamepad_input.dart (gamepads, normalized)
 ├── widgets/    hud, camera, map
 ├── screens/    connect, drive (home), routes, settings

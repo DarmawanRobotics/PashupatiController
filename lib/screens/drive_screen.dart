@@ -62,9 +62,13 @@ class _DriveScreenState extends State<DriveScreen> {
     _buttons = s.gamepad.presses.listen(_onButton);
     _lifecycle = AppLifecycleListener(onPause: _suspend, onResume: _resume);
     client.addListener(_onClient);
-    s.settings.addListener(_onSettings);
+    s.settings.addListener(_syncStreams);
+    s.video.addListener(_syncStreams);
     s.gamepad.refresh(); // the plugin may not have listed the controls yet at app start
-    _onClient();
+    // after the first frame: setting the streams notifies the screens below while this one builds
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onClient();
+    });
   }
 
   @override
@@ -74,7 +78,9 @@ class _DriveScreenState extends State<DriveScreen> {
     _buttons?.cancel();
     _lifecycle.dispose();
     client.removeListener(_onClient);
-    s.settings.removeListener(_onSettings);
+    s.settings.removeListener(_syncStreams);
+    s.video.removeListener(_syncStreams);
+    s.video.want(null, '');
     _viewport.dispose();
     super.dispose();
   }
@@ -136,6 +142,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
   /// Follows the robot's recording flag; a reconnect (no telemetry yet) changes nothing.
   void _onClient() {
+    _syncStreams();
     final state = client.state;
     if (client.status != LinkStatus.connected || state.seq == 0) return;
     if (state.recording) {
@@ -145,13 +152,25 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
-  /// Settings changed (here or on the settings page): apply the streams at once.
-  void _onSettings() {
+  /// Streams for the settings (here or on the settings page) and the link. The camera comes over
+  /// WebRTC when the robot offers it, as JPEG frames until that plays and whenever it fails.
+  void _syncStreams() {
     final settings = s.settings;
-    if (client.cameraEnabled != settings.video ||
+    final offer = client.welcome?.video;
+    final whep = settings.video && client.isLive && offer != null ? offer.whep(client.host) : null;
+    s.video.want(whep, client.token);
+    final jpeg = settings.video && s.video.renderer == null; // what the camera view can show
+    final webrtc = whep != null;
+    if (client.cameraEnabled != jpeg ||
+        client.videoEnabled != webrtc ||
         client.lidarEnabled != settings.lidar ||
         client.cameraFps != settings.cameraFps) {
-      client.setStreams(camera: settings.video, lidar: settings.lidar, fps: settings.cameraFps);
+      client.setStreams(
+        camera: jpeg,
+        video: webrtc,
+        lidar: settings.lidar,
+        fps: settings.cameraFps,
+      );
     }
   }
 
@@ -359,7 +378,7 @@ class _DriveScreenState extends State<DriveScreen> {
       child: Scaffold(
         backgroundColor: Palette.night,
         body: ListenableBuilder(
-          listenable: Listenable.merge([client, s.settings]),
+          listenable: Listenable.merge([client, s.settings, s.video]),
           builder: (context, _) => LayoutBuilder(
             builder: (context, constraints) => _layout(constraints.biggest),
           ),
@@ -384,10 +403,11 @@ class _DriveScreenState extends State<DriveScreen> {
 
     final camera = CameraView(
       frames: client.cameraFrame,
-      enabled: client.cameraEnabled,
+      enabled: s.settings.video,
       offText: s.t('camera_off'),
       waitText: s.t('camera_wait'),
       tags: state.tags,
+      webrtc: s.video.renderer,
     );
     final map = MapView(
       viewport: _viewport,

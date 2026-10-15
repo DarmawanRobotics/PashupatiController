@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gamepads/gamepads.dart';
 
+import '../net/webrtc_video.dart';
 import '../robot_actions.dart';
 import '../settings.dart';
 import '../theme.dart';
@@ -134,6 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         _section(t('section_display')),
         _switch(t('video'), _settings.video, (value) => _settings.update(video: value)),
+        _videoStatus(),
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
@@ -241,6 +243,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     ];
+  }
+
+  /// How the camera arrives now: WebRTC, or JPEG frames over the teleop link.
+  Widget _videoStatus() {
+    final video = widget.services.video;
+    final client = widget.services.client;
+    return ListenableBuilder(
+      listenable: Listenable.merge([video, client]),
+      builder: (context, _) {
+        final String? text = !_settings.video || !client.isLive
+            ? null
+            : switch (video.link) {
+                VideoLink.playing => t('video_webrtc'),
+                VideoLink.connecting => t('video_connecting'),
+                VideoLink.failed => t('video_failed', {'why': video.error}),
+                VideoLink.off => client.welcome?.video == null ? t('video_jpeg') : null,
+              };
+        if (text == null) return const SizedBox.shrink();
+        final color = video.link == VideoLink.failed ? Palette.caution : Palette.muted;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(text, style: Txt.small.copyWith(color: color)),
+        );
+      },
+    );
   }
 
   Widget _section(String title) {

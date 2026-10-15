@@ -3,12 +3,15 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart'
+    show RTCVideoRenderer, RTCVideoValue, RTCVideoView, RTCVideoViewObjectFit;
 
 import '../protocol/messages.dart';
 import '../theme.dart';
 
-/// Robot camera with the AprilTags it sees. Frames are decoded one at a time, newest first,
-/// outside the image cache (a cache entry per video frame would only fill memory).
+/// Robot camera with the AprilTags it sees: the WebRTC video while it plays, else the JPEG
+/// frames. Those are decoded one at a time, newest first, outside the image cache (a cache entry
+/// per video frame would only fill memory).
 class CameraView extends StatefulWidget {
   const CameraView({
     super.key,
@@ -17,6 +20,7 @@ class CameraView extends StatefulWidget {
     required this.offText,
     required this.waitText,
     this.tags = const [],
+    this.webrtc,
   });
 
   final ValueListenable<Uint8List?> frames;
@@ -24,6 +28,9 @@ class CameraView extends StatefulWidget {
   final String offText;
   final String waitText;
   final List<Tag> tags;
+
+  /// The playing WebRTC video; null shows the JPEG frames.
+  final RTCVideoRenderer? webrtc;
 
   @override
   State<CameraView> createState() => _CameraViewState();
@@ -105,6 +112,8 @@ class _CameraViewState extends State<CameraView> {
 
   @override
   Widget build(BuildContext context) {
+    final webrtc = widget.webrtc;
+    if (widget.enabled && webrtc != null) return _webrtc(webrtc);
     final image = _image;
     if (!widget.enabled || image == null) {
       return _Backdrop(text: widget.enabled ? widget.waitText : widget.offText);
@@ -115,6 +124,26 @@ class _CameraViewState extends State<CameraView> {
       children: [
         RawImage(image: image, fit: BoxFit.cover, filterQuality: FilterQuality.low),
         if (widget.tags.isNotEmpty) CustomPaint(painter: _TagPainter(widget.tags, size)),
+      ],
+    );
+  }
+
+  /// The WebRTC video, cropped like the JPEG frames (cover), with the tags over it.
+  Widget _webrtc(RTCVideoRenderer renderer) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+        if (widget.tags.isNotEmpty)
+          ValueListenableBuilder<RTCVideoValue>(
+            valueListenable: renderer,
+            builder: (context, value, _) {
+              final size = Size(value.width, value.height); // the robot sends it unrotated
+              return size.isEmpty
+                  ? const SizedBox.shrink()
+                  : CustomPaint(painter: _TagPainter(widget.tags, size));
+            },
+          ),
       ],
     );
   }

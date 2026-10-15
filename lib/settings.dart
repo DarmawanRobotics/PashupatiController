@@ -5,6 +5,7 @@ import 'input/gamepad_input.dart';
 import 'l10n.dart';
 import 'net/discovery.dart';
 import 'net/teleop_client.dart';
+import 'net/webrtc_video.dart';
 
 /// Handheld settings, kept on the device. The connection part is hidden behind three taps on
 /// the version; the rest is under the gear while driving.
@@ -94,12 +95,16 @@ class Services {
     required this.client,
     required this.discovery,
     required this.gamepad,
+    required this.video,
   });
 
   final AppSettings settings;
   final TeleopClient client;
   final Discovery discovery;
   final GamepadInput gamepad;
+
+  /// The robot camera over WebRTC, when the robot offers it.
+  final WebRtcVideo video;
 
   String t(String key, [Map<String, Object> args = const {}]) =>
       tr(settings.language, key, args);

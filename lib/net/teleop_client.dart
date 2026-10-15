@@ -101,6 +101,9 @@ class TeleopClient extends ChangeNotifier {
   RobotState state = const RobotState();
   String get host => _host;
 
+  /// The token of this session; the robot's WebRTC video takes it too.
+  String get token => _token;
+
   /// Round trip in ms (smoothed), null before the first pong.
   double? rttMs;
 
@@ -117,6 +120,9 @@ class TeleopClient extends ChangeNotifier {
   bool cameraEnabled = true;
   bool lidarEnabled = true;
   double cameraFps = 8;
+
+  /// The WebRTC video plays (or is starting): the robot keeps sending the tags for it.
+  bool videoEnabled = false;
 
   double _vx = 0, _vy = 0, _wz = 0;
 
@@ -249,10 +255,11 @@ class TeleopClient extends ChangeNotifier {
   /// Forgets where the robot has been (a new route recording starts); shown on the next state.
   void clearTrail() => trail.clear();
 
-  /// Turns the camera / lidar streams on or off, and sets the camera rate.
-  void setStreams({bool? camera, bool? lidar, double? fps}) {
+  /// Turns the JPEG camera, the lidar and the WebRTC video flag on or off; sets the camera rate.
+  void setStreams({bool? camera, bool? lidar, bool? video, double? fps}) {
     cameraEnabled = camera ?? cameraEnabled;
     lidarEnabled = lidar ?? lidarEnabled;
+    videoEnabled = video ?? videoEnabled;
     cameraFps = fps ?? cameraFps;
     if (!cameraEnabled) cameraFrame.value = null;
     if (!lidarEnabled) lidarPoints.value = null;
@@ -265,6 +272,7 @@ class TeleopClient extends ChangeNotifier {
   Map<String, Object?> _streams() => {
     'camera': cameraEnabled,
     'lidar': lidarEnabled,
+    'video': videoEnabled,
     'camera_fps': cameraFps,
   };
 
