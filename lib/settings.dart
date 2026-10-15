@@ -46,6 +46,9 @@ class AppSettings extends ChangeNotifier {
   /// Hold R1 to drive with the gamepad sticks.
   bool get deadman => _prefs.getBool('deadman') ?? false;
 
+  /// The robot computer's CPU, GPU and memory use on the drive screen (for development).
+  bool get showLoad => _prefs.getBool('show_load') ?? true;
+
   /// Inspection time of a stop point marked from the handheld, seconds.
   double get stopDwell => _prefs.getDouble('dwell') ?? 10;
 
@@ -65,6 +68,7 @@ class AppSettings extends ChangeNotifier {
     bool? lidar,
     String? mainView,
     bool? deadman,
+    bool? showLoad,
     double? stopDwell,
     int? gear,
   }) async {
@@ -79,6 +83,7 @@ class AppSettings extends ChangeNotifier {
       if (lidar != null) _prefs.setBool('map', lidar),
       if (mainView != null) _prefs.setString('main_view', mainView),
       if (deadman != null) _prefs.setBool('deadman', deadman),
+      if (showLoad != null) _prefs.setBool('show_load', showLoad),
       if (stopDwell != null) _prefs.setDouble('dwell', stopDwell),
       if (gear != null) _prefs.setInt('gear', _gear(gear)),
     ];

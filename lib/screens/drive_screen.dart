@@ -13,6 +13,7 @@ import '../robot_actions.dart';
 import '../settings.dart';
 import '../theme.dart';
 import '../widgets/camera_view.dart';
+import '../widgets/glance.dart';
 import '../widgets/hud.dart';
 import '../widgets/map_view.dart';
 import 'patrol_screen.dart';
@@ -511,6 +512,27 @@ class _DriveScreenState extends State<DriveScreen> {
           // the map listens to the viewport itself: a pinch does not rebuild the whole screen
           child: ListenableBuilder(listenable: _viewport, builder: (context, _) => _viewButtons()),
         ),
+        // last inspection, people in view and the robot's load, above the toolbar
+        if (size.height - (top + insetHeight + 52) - 70 > 30)
+          Positioned(
+            key: const ValueKey('glance'),
+            left: 10,
+            top: top + insetHeight + 52,
+            bottom: 70,
+            width: insetWidth,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: GlancePanel(
+                  state: state,
+                  language: s.settings.language,
+                  showLoad: s.settings.showLoad,
+                  onTap: (client.welcome?.has('inspection_set') ?? false) ? _openPatrol : null,
+                ),
+              ),
+            ),
+          ),
 
         Positioned(key: const ValueKey('top'), left: 8, right: 8, top: 6, child: _topBar()),
         Positioned(
@@ -899,7 +921,9 @@ class _DriveScreenState extends State<DriveScreen> {
               tint: inspection.color,
               active: state.inspection?.state == 'running',
               width: width,
-              onPressed: has('inspection_set') || has('nav_speed') ? _openPatrol : null,
+              onPressed: has('inspection_set') || has('people_set') || has('nav_speed')
+                  ? _openPatrol
+                  : null,
             ),
           ],
         ),

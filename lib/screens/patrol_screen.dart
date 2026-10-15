@@ -23,7 +23,7 @@ import '../widgets/hud.dart';
 }
 
 /// Inspection and patrol, live on the robot: the VLM inspection on or off, its pace and model,
-/// what it saw last, and the patrol speed.
+/// what it saw last, person detection on or off, and the patrol speed.
 class PatrolScreen extends StatefulWidget {
   const PatrolScreen({
     super.key,
@@ -92,6 +92,10 @@ class _PatrolScreenState extends State<PatrolScreen> {
     return result.ok;
   }
 
+  void _setPeople(bool on) {
+    _send('people', 'people_set', {'enabled': on}, t(on ? 'people_on' : 'people_off_done'));
+  }
+
   void _setEnabled(bool on) {
     _send('enabled', 'inspection_set', {'enabled': on}, t(on ? 'inspection_on' : 'inspection_off'));
   }
@@ -158,7 +162,17 @@ class _PatrolScreenState extends State<PatrolScreen> {
                     children: [
                       Expanded(flex: 6, child: _inspection(client.state.inspection)),
                       const SizedBox(width: 16),
-                      Expanded(flex: 5, child: _speed(client.state.speed)),
+                      Expanded(
+                        flex: 5,
+                        child: ListView(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          children: [
+                            _people(client.state.people),
+                            const SizedBox(height: 12),
+                            _speed(client.state.speed),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -181,6 +195,7 @@ class _PatrolScreenState extends State<PatrolScreen> {
         _statusCard(status),
         const SizedBox(height: 6),
         SwitchListTile(
+          key: const ValueKey('inspection-switch'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           title: Text(t('inspection_switch'), style: Txt.body),
@@ -360,7 +375,48 @@ class _PatrolScreenState extends State<PatrolScreen> {
       color: Palette.panel,
       radius: 14,
       padding: const EdgeInsets.all(12),
-      child: ListView(children: children),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+  }
+
+  Widget _people(PeopleStatus? people) {
+    final live = _has('people_set') && people != null && people.state != 'offline';
+    final lines = <String>[];
+    if (people == null) {
+      lines.add(t('people_missing'));
+    } else {
+      final count = people.count;
+      if (count != null) {
+        lines.add(
+          t('people_detail', {'n': count, 'ms': people.latencyMs, 'backend': people.backend}),
+        );
+      }
+      if (people.state == 'error' && people.error.isNotEmpty) lines.add(people.error);
+    }
+    return Glass(
+      color: Palette.panel,
+      radius: 14,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(t('section_people'), style: Txt.title),
+          SwitchListTile(
+            key: const ValueKey('people-switch'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(t('people_switch'), style: Txt.body),
+            subtitle: Text(t('people_switch_hint'), style: Txt.small),
+            value: people?.on ?? false,
+            onChanged: live && !_busy.contains('people') ? _setPeople : null,
+          ),
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(line, style: Txt.small.copyWith(color: Palette.text)),
+            ),
+        ],
+      ),
     );
   }
 

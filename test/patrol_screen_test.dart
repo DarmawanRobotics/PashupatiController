@@ -29,9 +29,13 @@ class FakeRobot {
 
 TeleopClient robotClient(Map<String, dynamic> state) => TeleopClient()
   ..welcome = Welcome.fromJson({
-    'commands': ['inspection_set', 'inspection_models', 'nav_speed'],
+    'commands': ['inspection_set', 'inspection_models', 'people_set', 'nav_speed'],
   })
   ..state = RobotState.fromJson(state);
+
+/// The switch of the inspection (left column) or of the person detection (right column).
+Finder switchOf(String key) =>
+    find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Switch));
 
 /// Scrolls the inspection column until [finder] shows, then taps it.
 Future<void> tapInColumn(WidgetTester tester, Finder finder) async {
@@ -71,6 +75,13 @@ void main() {
         'reports': 1,
         'last': {'cat': 'trash', 'reported': true, 'ms': 1800, 'age': 3},
       },
+      'people': {
+        'on': true,
+        'state': 'running',
+        'count': 3,
+        'ms': 80,
+        'backend': 'onnxruntime-cpu',
+      },
       'speed': {'target': 0.4, 'min': 0.1, 'max': 0.6},
     });
     addTearDown(client.dispose);
@@ -79,9 +90,14 @@ void main() {
     expect(find.text('Running'), findsOneWidget);
     expect(find.text('0.40 m/s'), findsOneWidget);
     expect(find.textContaining('Trash'), findsOneWidget);
+    expect(find.text('3 in view · 80 ms · onnxruntime-cpu'), findsOneWidget);
 
-    await tapInColumn(tester, find.byType(Switch));
+    await tapInColumn(tester, switchOf('inspection-switch'));
     expect(robot.sent['inspection_set'], {'enabled': false});
+
+    await tester.tap(switchOf('people-switch'));
+    await tester.pumpAndSettle();
+    expect(robot.sent['people_set'], {'enabled': false});
 
     await tapInColumn(tester, find.text('Stop points'));
     expect(robot.sent['inspection_set'], {'interval': -1.0});
@@ -99,6 +115,8 @@ void main() {
     );
     expect(find.textContaining('ollama pull ahmadwaqar'), findsOneWidget);
 
+    await tester.ensureVisible(find.byType(Slider));
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(Slider), const Offset(80, 0));
     await tester.pumpAndSettle();
     final speed = robot.sent['nav_speed']!['speed']! as double;
@@ -113,7 +131,9 @@ void main() {
     expect(find.text('Not running'), findsOneWidget);
     expect(find.textContaining('INSPECTION=true'), findsOneWidget);
     expect(find.textContaining('Navigation is not running'), findsOneWidget);
-    expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+    expect(tester.widget<Switch>(switchOf('inspection-switch')).onChanged, isNull);
+    expect(tester.widget<Switch>(switchOf('people-switch')).onChanged, isNull);
+    expect(find.textContaining('PEOPLE=true'), findsOneWidget);
   });
 
   testWidgets('the interval pace offers the seconds between inspections', (tester) async {

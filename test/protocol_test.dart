@@ -155,6 +155,22 @@ void main() {
     expect(InspectionStatus.fromJson({'last': {}})!.last!.clear, isTrue);
   });
 
+  test('people and the robot load in the state', () {
+    final state = RobotState.fromJson({
+      'people': {'on': true, 'state': 'running', 'count': 2, 'ms': 90, 'age': 1, 'backend': 'cpu'},
+      'health': {'ok': true, 'issues': [], 'cpu': 12.0, 'gpu': null, 'ram_used': 4.2},
+    });
+    expect(state.people!.count, 2);
+    expect(state.people!.latencyMs, 90);
+    expect(state.load!.cpu, 12.0);
+    expect(state.load!.gpu, isNull);
+    expect(state.load!.ramUsed, 4.2);
+    expect(state.healthOk, isTrue);
+    expect(RobotState.fromJson({'health': {'ok': true, 'issues': []}}).load, isNull);
+    expect(PeopleStatus.fromJson({})!.state, 'offline');
+    expect(PeopleStatus.fromJson({'state': 'loading'})!.count, isNull);
+  });
+
   test('inspection models and their names', () {
     final models = InspectionModel.listFromJson([
       {'name': 'moondream:latest', 'installed': true, 'active': true},

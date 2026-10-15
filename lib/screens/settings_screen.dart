@@ -153,6 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChangeEnd: (value) => _settings.update(cameraFps: value),
         ),
         _switch(t('lidar_on_map'), _settings.lidar, (value) => _settings.update(lidar: value)),
+        _switch(t('show_load'), _settings.showLoad, (value) => _settings.update(showLoad: value)),
         _choice(
           t('language'),
           SegmentedButton<String>(

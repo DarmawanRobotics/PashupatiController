@@ -1,0 +1,153 @@
+import 'package:flutter/material.dart';
+
+import '../l10n.dart';
+import '../protocol/messages.dart';
+import '../theme.dart';
+import 'hud.dart';
+
+/// What the robot sees and how hard it works, at a glance under the small view: the last
+/// inspection (clear or a finding), the people in view and the computer's load. Tap it for the
+/// inspection page with the details.
+class GlancePanel extends StatelessWidget {
+  const GlancePanel({
+    super.key,
+    required this.state,
+    required this.language,
+    required this.showLoad,
+    this.onTap,
+  });
+
+  final RobotState state;
+  final String language;
+  final bool showLoad;
+  final VoidCallback? onTap;
+
+  String t(String key, [Map<String, Object> args = const {}]) => tr(language, key, args);
+
+  @override
+  Widget build(BuildContext context) {
+    final inspection = state.inspection;
+    final people = state.people;
+    final load = state.load;
+    final rows = <Widget>[
+      if (inspection != null) _inspectionRow(inspection),
+      if (people != null) _peopleRow(people),
+      if (showLoad && load != null) ..._loadRows(load),
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Glass(
+        radius: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows,
+        ),
+      ),
+    );
+  }
+
+  Widget _inspectionRow(InspectionStatus inspection) {
+    final last = inspection.last;
+    switch (inspection.state) {
+      case 'running':
+        if (last == null) return _row(Icons.visibility_rounded, Palette.muted, t('glance_waiting'));
+        if (last.clear) {
+          return _row(
+            Icons.check_circle_rounded,
+            Palette.ok,
+            _withAge(t('cat_none'), last.age),
+            strong: true,
+          );
+        }
+        return _row(
+          Icons.report_rounded,
+          last.reported ? Palette.stop : Palette.caution,
+          _withAge(categoryLabel(language, last.category), last.age),
+          strong: true,
+        );
+      case 'loading':
+        return _row(Icons.hourglass_top_rounded, Palette.caution, t('ai_loading'));
+      case 'off':
+        return _row(Icons.visibility_off_rounded, Palette.muted, t('ai_off'));
+      default:
+        return _row(Icons.error_rounded, Palette.stop, t('ai_error'));
+    }
+  }
+
+  Widget _peopleRow(PeopleStatus people) {
+    switch (people.state) {
+      case 'running':
+        final count = people.count;
+        final text = count == null
+            ? t('people_waiting')
+            : (count == 1 ? t('person_one') : t('people_count', {'n': count}));
+        return _row(Icons.person_rounded, Palette.auto, text, strong: count != null);
+      case 'loading':
+        return _row(Icons.person_rounded, Palette.caution, t('people_loading'));
+      case 'off':
+        return _row(Icons.person_off_rounded, Palette.muted, t('people_off'));
+      default:
+        return _row(Icons.person_off_rounded, Palette.stop, t('people_error'));
+    }
+  }
+
+  List<Widget> _loadRows(SystemLoad load) {
+    String percent(double? value) => value == null ? '–' : '${value.round()}%';
+    Color tone(double? value, double busy, double full) => value == null || value < busy
+        ? Palette.muted
+        : (value < full ? Palette.caution : Palette.stop);
+    final busiest = [load.cpu, load.gpu, load.ram].whereType<double>().fold<double>(
+      0,
+      (a, b) => a > b ? a : b,
+    );
+    final used = load.ramUsed;
+    final total = load.ramTotal;
+    final ram = used != null && total != null
+        ? '${used.toStringAsFixed(1)}/${total.toStringAsFixed(0)} GB'
+        : percent(load.ram);
+    final temp = load.temp;
+    return [
+      _row(
+        Icons.memory_rounded,
+        tone(busiest, 75, 90),
+        'CPU ${percent(load.cpu)}  GPU ${percent(load.gpu)}',
+      ),
+      _row(
+        Icons.thermostat_rounded,
+        tone(temp, 75, 85),
+        temp == null ? 'RAM $ram' : 'RAM $ram  ${temp.round()}°C',
+      ),
+    ];
+  }
+
+  String _withAge(String what, int? age) {
+    if (age == null) return what;
+    final ago = age < 60 ? t('ago_s', {'n': age}) : t('ago_min', {'n': age ~/ 60});
+    return '$what · $ago';
+  }
+
+  Widget _row(IconData icon, Color color, String text, {bool strong = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: strong ? Txt.label.copyWith(color: color) : Txt.small,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

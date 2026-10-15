@@ -20,6 +20,7 @@ const pashupatiCommands = {
   'record_tags',
   'inspection_set',
   'inspection_models',
+  'people_set',
   'nav_speed',
 };
 
@@ -186,6 +187,8 @@ class RobotState {
     this.field,
     this.tags = const [],
     this.inspection,
+    this.people,
+    this.load,
     this.speed,
   });
 
@@ -225,6 +228,8 @@ class RobotState {
       field: json['field'] is String ? json['field'] as String : null,
       tags: _tags(json['tags']),
       inspection: InspectionStatus.fromJson(json['inspection']),
+      people: PeopleStatus.fromJson(json['people']),
+      load: SystemLoad.fromJson(health),
       speed: PatrolSpeed.fromJson(json['speed']),
     );
   }
@@ -257,6 +262,12 @@ class RobotState {
 
   /// The VLM floor inspection; null when the robot runs none.
   final InspectionStatus? inspection;
+
+  /// Person detection; null when the robot runs none.
+  final PeopleStatus? people;
+
+  /// CPU, GPU and memory use of the robot's computer, from its health monitor.
+  final SystemLoad? load;
 
   /// Patrol speed of the navigation; null when navigation does not run.
   final PatrolSpeed? speed;
@@ -438,4 +449,76 @@ class PatrolSpeed {
   final double target;
   final double min;
   final double max;
+}
+
+/// `state.people`: the robot's person detection (person_detector_node).
+class PeopleStatus {
+  const PeopleStatus({
+    required this.on,
+    required this.state,
+    this.count,
+    this.latencyMs = 0,
+    this.age,
+    this.backend = '',
+    this.error = '',
+  });
+
+  /// Null unless the robot sent a people object.
+  static PeopleStatus? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return PeopleStatus(
+      on: json['on'] == true,
+      state: _str(json['state'], 'offline'),
+      count: _num(json['count'])?.round(),
+      latencyMs: _num(json['ms'])?.round() ?? 0,
+      age: _num(json['age'])?.round(),
+      backend: _str(json['backend']),
+      error: _str(json['error']),
+    );
+  }
+
+  final bool on;
+
+  /// loading, running, off, error, or offline (the robot stopped hearing from the detector).
+  final String state;
+
+  /// People in the last frame the robot looked at; null before the first.
+  final int? count;
+  final int latencyMs;
+
+  /// Seconds since that frame; null when unknown.
+  final int? age;
+
+  /// What runs the model, e.g. onnxruntime-cpu.
+  final String backend;
+  final String error;
+}
+
+/// The robot computer's load (`state.health`): percentages, memory in GB, hottest zone in C.
+class SystemLoad {
+  const SystemLoad({this.cpu, this.gpu, this.ram, this.ramUsed, this.ramTotal, this.temp});
+
+  /// Null unless the health object carries at least one figure.
+  static SystemLoad? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final load = SystemLoad(
+      cpu: _num(json['cpu']),
+      gpu: _num(json['gpu']),
+      ram: _num(json['ram']),
+      ramUsed: _num(json['ram_used']),
+      ramTotal: _num(json['ram_total']),
+      temp: _num(json['temp']),
+    );
+    final figures = [load.cpu, load.gpu, load.ram, load.ramUsed, load.temp];
+    return figures.every((v) => v == null) ? null : load;
+  }
+
+  final double? cpu;
+
+  /// Null on a computer without a Jetson GPU.
+  final double? gpu;
+  final double? ram;
+  final double? ramUsed;
+  final double? ramTotal;
+  final double? temp;
 }
