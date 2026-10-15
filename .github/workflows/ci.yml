@@ -43,7 +43,38 @@ jobs:
             diff=${diff//$'\n'/'%0A'}
             echo "::notice file=$file,title=dart format::$diff"
           done
-      - run: flutter test --reporter github
+      # every failing test becomes an annotation with its error (readable without the job log)
+      - name: Test
+        run: |
+          set +e
+          flutter test --reporter json > test-results.json
+          status=$?
+          python3 - <<'PY'
+          import json
+          names, errors, printed = {}, {}, {}
+          for line in open('test-results.json'):
+              try:
+                  event = json.loads(line)
+              except ValueError:
+                  continue
+              kind = event.get('type')
+              if kind == 'testStart':
+                  names[event['test']['id']] = event['test']['name']
+              elif kind == 'error':
+                  errors.setdefault(event['testID'], []).append(
+                      event['error'] + '\n' + event.get('stackTrace', '')[:1200]
+                  )
+              elif kind == 'print':
+                  printed.setdefault(event['testID'], []).append(event['message'])
+          for test, messages in errors.items():
+              text = '\n'.join(messages + printed.get(test, []))[:6000]
+              text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              title = names.get(test, 'test').replace(',', ' ').replace(':', ' ')
+              print(f'::error title={title}::{text}')
+          passed = sum(1 for _ in names) - len(errors)
+          print(f'{len(names)} tests, {len(errors)} failed')
+          PY
+          exit $status
 
   # an installable build for the handheld (Actions → this run → Artifacts); signed with the
   # runner's debug key, so uninstall a locally built app before installing this one
