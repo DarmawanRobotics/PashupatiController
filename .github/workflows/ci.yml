@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      # every analyzer finding becomes an annotation (readable without the job log)
+      - name: Analyze
+        run: |
+          dart analyze --format=machine > analysis.txt 2>&1 || true
+          while IFS='|' read -r severity type code file line column length message; do
+            case "$severity" in
+              ERROR) level=error ;;
+              WARNING) level=warning ;;
+              INFO) level=notice ;;
+              *) continue ;;
+            esac
+            echo "::$level file=${file#"$PWD"/},line=$line,col=$column,title=$code::$message"
+          done < analysis.txt
+          flutter analyze --no-fatal-infos
+      # formatting is reported, not enforced: one notice per file with the change
+      - name: Format
+        run: |
+          dart format lib test > /dev/null
+          for file in $(git diff --name-only); do
+            diff=$(git diff -U0 "$file" | tail -n +5 | head -c 3000)
+            diff=${diff//'%'/'%25'}
+            diff=${diff//$'\r'/'%0D'}
+            diff=${diff//$'\n'/'%0A'}
+            echo "::notice file=$file,title=dart format::$diff"
+          done
+      - run: flutter test --reporter github
