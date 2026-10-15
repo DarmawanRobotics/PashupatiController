@@ -20,6 +20,7 @@ const pashupatiCommands = {
   'record_tags',
   'inspection_set',
   'inspection_models',
+  'inspection_categories',
   'people_set',
   'nav_speed',
 };
@@ -558,4 +559,70 @@ class PersonBox {
   const PersonBox(this.x1, this.y1, this.x2, this.y2, this.score);
 
   final double x1, y1, x2, y2, score;
+}
+
+/// Finding types with a description built into the robot (others need one of their own).
+const builtinFindingTypes = {'trash', 'spill', 'stain', 'floor_damage', 'fallen_person'};
+
+/// A finding type name the robot takes (a-z, 0-9 and _, starting with a letter), or null.
+String? findingTypeName(String text) {
+  final name = text
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s-]+'), '_')
+      .replaceAll(RegExp(r'[^a-z0-9_]'), '');
+  return RegExp(r'^[a-z][a-z0-9_]{0,31}$').hasMatch(name) && name != 'none' ? name : null;
+}
+
+/// A type of finding the robot's inspection tells apart (`inspection_categories`).
+class InspectionCategory {
+  const InspectionCategory({
+    required this.name,
+    this.desc = '',
+    this.report = false,
+    this.builtin = false,
+    this.ownDesc = false,
+  });
+
+  static List<InspectionCategory> listFromJson(Object? json) => [
+    if (json is List)
+      for (final entry in json)
+        if (entry is Map && entry['name'] is String)
+          InspectionCategory(
+            name: entry['name'] as String,
+            desc: _str(entry['desc']),
+            report: entry['report'] == true,
+            builtin: entry['builtin'] == true,
+            ownDesc: entry['own_desc'] == true,
+          ),
+  ];
+
+  final String name;
+
+  /// What the model looks for, as the robot gives it.
+  final String desc;
+
+  /// Sent to NETRA as a finding; otherwise only shown.
+  final bool report;
+
+  /// The robot has a description of its own for this type.
+  final bool builtin;
+
+  /// [desc] was written by the operator.
+  final bool ownDesc;
+
+  InspectionCategory copyWith({String? desc, bool? report, bool? ownDesc}) => InspectionCategory(
+    name: name,
+    desc: desc ?? this.desc,
+    report: report ?? this.report,
+    builtin: builtin,
+    ownDesc: ownDesc ?? this.ownDesc,
+  );
+
+  /// As `inspection_set` takes it: an empty desc keeps the robot's built-in text.
+  Map<String, Object> toJson() => {
+    'name': name,
+    'desc': ownDesc || !builtin ? desc : '',
+    'report': report,
+  };
 }

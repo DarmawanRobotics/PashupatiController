@@ -23,13 +23,25 @@ class FakeRobot {
         {'name': 'ahmadwaqar/smolvlm2-2.2b-instruct:latest', 'installed': false, 'active': false},
       ]);
     }
+    if (name == 'inspection_categories') {
+      return const CommandResult(true, '', [
+        {'name': 'trash', 'desc': 'loose items', 'report': true, 'builtin': true},
+        {'name': 'stain', 'desc': 'a dry mark', 'report': false, 'builtin': true},
+      ]);
+    }
     return const CommandResult(true, '');
   }
 }
 
 TeleopClient robotClient(Map<String, dynamic> state) => TeleopClient()
   ..welcome = Welcome.fromJson({
-    'commands': ['inspection_set', 'inspection_models', 'people_set', 'nav_speed'],
+    'commands': [
+      'inspection_set',
+      'inspection_models',
+      'inspection_categories',
+      'people_set',
+      'nav_speed',
+    ],
   })
   ..state = RobotState.fromJson(state);
 
@@ -165,5 +177,47 @@ void main() {
     final sent = robot.sent['inspection_set']!['interval'] as double;
     expect(sent, greaterThan(10.0));
     expect(const [15.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0, 180.0, 300.0], contains(sent));
+  });
+
+  testWidgets('finding types: report one more, and add an own type with its description', (
+    tester,
+  ) async {
+    final client = robotClient({
+      'inspection': {'on': true, 'state': 'running', 'model': 'moondream', 'interval': 0},
+    });
+    addTearDown(client.dispose);
+    final robot = await openPage(tester, client);
+    final add = find.byKey(const ValueKey('type-add'));
+    await tester.scrollUntilVisible(add, 80, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    expect(find.text('a dry mark'), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('type-stain')),
+        matching: find.byType(Switch),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(robot.sent['inspection_set'], {
+      'categories': [
+        {'name': 'trash', 'desc': '', 'report': true},
+        {'name': 'stain', 'desc': '', 'report': true},
+      ],
+    });
+
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('type-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Letters a-z, digits and _, starting with a letter'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('type-name')), 'Tas Tertinggal');
+    await tester.enterText(find.byKey(const ValueKey('type-desc')), ' a bag  left alone ');
+    await tester.tap(find.byKey(const ValueKey('type-save')));
+    await tester.pumpAndSettle();
+    final types = robot.sent['inspection_set']!['categories'] as List;
+    expect(types.last, {'name': 'tas_tertinggal', 'desc': 'a bag left alone', 'report': true});
+    expect(types, hasLength(3));
+    expect(find.text('tas tertinggal'), findsOneWidget);
   });
 }

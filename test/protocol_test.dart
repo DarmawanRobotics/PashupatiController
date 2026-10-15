@@ -155,6 +155,22 @@ void main() {
     expect(InspectionStatus.fromJson({'last': {}})!.last!.clear, isTrue);
   });
 
+  test('finding types: names, and what is sent back', () {
+    expect(findingTypeName(' Tas Tertinggal '), 'tas_tertinggal');
+    expect(findingTypeName('lift-door'), 'lift_door');
+    expect(findingTypeName('9lives'), isNull);
+    expect(findingTypeName('none'), isNull);
+    final types = InspectionCategory.listFromJson([
+      {'name': 'trash', 'desc': 'loose items', 'report': true, 'builtin': true},
+      {'name': 'bag', 'desc': 'a bag', 'report': false, 'own_desc': true},
+      {'desc': 'no name'},
+    ]);
+    expect(types.map((type) => type.toJson()), [
+      {'name': 'trash', 'desc': '', 'report': true},
+      {'name': 'bag', 'desc': 'a bag', 'report': false},
+    ]);
+  });
+
   test('the inspection queue and how long a frame waited', () {
     final status = InspectionStatus.fromJson({
       'on': true,

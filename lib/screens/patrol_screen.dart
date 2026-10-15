@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -41,14 +42,18 @@ class PatrolScreen extends StatefulWidget {
 }
 
 class _PatrolScreenState extends State<PatrolScreen> {
-  /// Seconds between two inspections in the interval pace.
   /// Seconds between interval frames the slider steps through.
   static const _intervals = [
-    1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0, 180.0, 300.0,
+    0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0,
+    180.0, 300.0,
   ];
+  static const _maxTypes = 12;
 
   List<InspectionModel>? _models;
   String? _modelsError;
+  List<InspectionCategory>? _types;
+  String? _typesError;
+  Timer? _typesRefresh;
   final Set<String> _busy = {};
   String? _switchingTo;
   double? _speedDraft;
@@ -64,6 +69,76 @@ class _PatrolScreenState extends State<PatrolScreen> {
   void initState() {
     super.initState();
     _fetchModels();
+    _fetchTypes();
+  }
+
+  @override
+  void dispose() {
+    _typesRefresh?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchTypes({bool spinner = true}) async {
+    if (!_has('inspection_categories')) return;
+    if (spinner) {
+      setState(() {
+        _types = null;
+        _typesError = null;
+      });
+    }
+    final result = await widget.onRun(
+      'inspection_categories',
+      label: t('section_types'),
+      quiet: true,
+    );
+    if (!mounted) return;
+    setState(() {
+      _types = InspectionCategory.listFromJson(result.data);
+      _typesError = result.ok ? null : (result.message.isEmpty ? t('failed') : result.message);
+    });
+  }
+
+  /// Sends the whole list of finding types; the robot replaces its own with it.
+  Future<void> _saveTypes(List<InspectionCategory> types) async {
+    final ok = await _send('types', 'inspection_set', {
+      'categories': [for (final type in types) type.toJson()],
+    }, t('types_saved'));
+    if (!ok || !mounted) return;
+    setState(() => _types = types);
+    // the robot's texts (built-in descriptions) once its status has caught up
+    _typesRefresh?.cancel();
+    _typesRefresh = Timer(const Duration(milliseconds: 1500), () => _fetchTypes(spinner: false));
+  }
+
+  Future<void> _editType(InspectionCategory? type) async {
+    final types = _types ?? const <InspectionCategory>[];
+    final edited = await showDialog<_TypeEdit>(
+      context: context,
+      builder: (context) => _TypeDialog(
+        type: type,
+        taken: {for (final other in types) other.name},
+        canDelete: type != null && types.length > 1,
+        t: t,
+        language: widget.language,
+      ),
+    );
+    if (edited == null) return;
+    if (edited.delete) {
+      await _saveTypes([for (final other in types) if (other.name != type!.name) other]);
+      return;
+    }
+    final changed = InspectionCategory(
+      name: edited.name,
+      desc: edited.desc.isEmpty && type != null ? type.desc : edited.desc,
+      report: edited.report,
+      builtin: type?.builtin ?? builtinFindingTypes.contains(edited.name),
+      ownDesc: edited.desc.isNotEmpty,
+    );
+    await _saveTypes(
+      type == null
+          ? [...types, changed]
+          : [for (final other in types) other.name == type.name ? changed : other],
+    );
   }
 
   Future<void> _fetchModels() async {
@@ -118,9 +193,10 @@ class _PatrolScreenState extends State<PatrolScreen> {
     if (mounted) setState(() => _intervalDraft = null);
   }
 
-  String _every(double seconds) => seconds >= 120 && seconds % 60 == 0
-      ? t('every_min', {'n': seconds ~/ 60})
-      : t('every_s', {'n': seconds.round()});
+  String _every(double seconds) {
+    if (seconds >= 120 && seconds % 60 == 0) return t('every_min', {'n': seconds ~/ 60});
+    return t('every_s', {'n': seconds < 1 ? seconds.toStringAsFixed(1) : '${seconds.round()}'});
+  }
 
   Future<void> _setModel(String name) async {
     setState(() => _switchingTo = name);
@@ -237,8 +313,73 @@ class _PatrolScreenState extends State<PatrolScreen> {
         if (pace == 'interval') _intervalSlider(current, live),
         _section(t('section_model')),
         ..._modelTiles(status, live),
+        _section(t('section_types')),
+        ..._typeTiles(live),
       ],
     );
+  }
+
+  List<Widget> _typeTiles(bool live) {
+    if (!_has('inspection_categories')) return [Text(t('types_unsupported'), style: Txt.small)];
+    final types = _types;
+    final error = _typesError;
+    if (types == null) {
+      return const [
+        Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator(color: Palette.auto)),
+        ),
+      ];
+    }
+    if (error != null) return [Text(error, style: Txt.body.copyWith(color: Palette.stop))];
+    final editable = live && !_busy.contains('types');
+    return [
+      // its own Material: list tiles paint their ink there
+      Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (final type in types)
+              ListTile(
+                key: ValueKey('type-${type.name}'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  type.report ? Icons.campaign_rounded : Icons.visibility_rounded,
+                  color: type.report ? Palette.stop : Palette.muted,
+                ),
+                title: Text(categoryLabel(widget.language, type.name), style: Txt.body),
+                subtitle: Text(
+                  type.desc,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Txt.small,
+                ),
+                trailing: Switch(
+                  value: type.report,
+                  onChanged: editable
+                      ? (report) => _saveTypes([
+                          for (final other in types)
+                            other.name == type.name ? other.copyWith(report: report) : other,
+                        ])
+                      : null,
+                ),
+                onTap: editable ? () => _editType(type) : null,
+              ),
+          ],
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const ValueKey('type-add'),
+          onPressed: editable && types.length < _maxTypes ? () => _editType(null) : null,
+          icon: const Icon(Icons.add_rounded),
+          label: Text(t('type_add')),
+        ),
+      ),
+      Text(t('types_hint'), style: Txt.small),
+    ];
   }
 
   /// How often interval mode takes a frame for the queue: 1 s to 5 min.
@@ -538,6 +679,150 @@ class _ModelTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// What the type dialog gives back: the type as edited, or that it is to be deleted.
+class _TypeEdit {
+  const _TypeEdit({this.name = '', this.desc = '', this.report = true, this.delete = false});
+
+  final String name;
+
+  /// Empty: keep the description the type has (a built-in one included).
+  final String desc;
+  final bool report;
+  final bool delete;
+}
+
+/// Adds a finding type (name, description, reported) or changes or deletes one.
+class _TypeDialog extends StatefulWidget {
+  const _TypeDialog({
+    required this.type,
+    required this.taken,
+    required this.canDelete,
+    required this.t,
+    required this.language,
+  });
+
+  /// Null for a new type.
+  final InspectionCategory? type;
+
+  /// Names already in use.
+  final Set<String> taken;
+  final bool canDelete;
+  final String Function(String key, [Map<String, Object> args]) t;
+  final String language;
+
+  @override
+  State<_TypeDialog> createState() => _TypeDialogState();
+}
+
+class _TypeDialogState extends State<_TypeDialog> {
+  late final _name = TextEditingController(text: widget.type?.name ?? '');
+  late final _desc = TextEditingController(
+    text: widget.type != null && (widget.type!.ownDesc || !widget.type!.builtin)
+        ? widget.type!.desc
+        : '',
+  );
+  late bool _report = widget.type?.report ?? true;
+  String? _nameError;
+  String? _descError;
+
+  String t(String key) => widget.t(key);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _desc.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final type = widget.type;
+    final name = type?.name ?? findingTypeName(_name.text);
+    final desc = _desc.text.trim().split(RegExp(r'\s+')).join(' ');
+    setState(() {
+      _nameError = name == null
+          ? t('type_name_error')
+          : (type == null && widget.taken.contains(name) ? t('type_name_taken') : null);
+      _descError = desc.isEmpty && type == null && !builtinFindingTypes.contains(name)
+          ? t('type_desc_required')
+          : null;
+    });
+    if (_nameError != null || _descError != null) return;
+    Navigator.pop(context, _TypeEdit(name: name!, desc: desc, report: _report));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final type = widget.type;
+    return AlertDialog(
+      backgroundColor: Palette.panel,
+      title: Text(type == null ? t('type_add') : t('type_edit'), style: Txt.title),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (type == null)
+                TextField(
+                  key: const ValueKey('type-name'),
+                  controller: _name,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: t('type_name'),
+                    hintText: 'unattended_bag',
+                    errorText: _nameError,
+                  ),
+                )
+              else
+                Text(categoryLabel(widget.language, type.name), style: Txt.body),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('type-desc'),
+                controller: _desc,
+                maxLength: 200,
+                minLines: 2,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: t('type_desc'),
+                  hintText: type != null && type.builtin ? type.desc : t('type_desc_hint'),
+                  hintMaxLines: 3,
+                  errorText: _descError,
+                ),
+              ),
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  key: const ValueKey('type-report'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(t('type_report'), style: Txt.body),
+                  value: _report,
+                  onChanged: (report) => setState(() => _report = report),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (widget.canDelete)
+          TextButton(
+            key: const ValueKey('type-delete'),
+            onPressed: () => Navigator.pop(context, const _TypeEdit(delete: true)),
+            child: Text(t('type_delete'), style: const TextStyle(color: Palette.stop)),
+          ),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(t('cancel'))),
+        FilledButton(
+          key: const ValueKey('type-save'),
+          onPressed: _save,
+          child: Text(t('save')),
+        ),
+      ],
     );
   }
 }
