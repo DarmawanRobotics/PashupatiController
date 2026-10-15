@@ -4,3 +4,6 @@ linter:
   rules:
     always_declare_return_types: true
     prefer_single_quotes: true
+
+formatter:
+  page_width: 100

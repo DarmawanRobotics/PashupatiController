@@ -6,27 +6,27 @@ import '../settings.dart';
 import '../theme.dart';
 import '../widgets/hud.dart';
 
-/// Hidden settings (three taps on the version): robot address, token, language, controls.
+/// Settings. Control, display and patrol apply at once (the gear while driving); the robot
+/// connection and the gamepad test only in [admin] mode (three taps on the version).
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.services});
+  const SettingsScreen({super.key, required this.services, this.admin = false});
 
   final Services services;
+  final bool admin;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static const _dwells = [5.0, 10.0, 30.0, 60.0];
+
   late final AppSettings _settings = widget.services.settings;
   late final _host = TextEditingController(text: _settings.host);
   late final _port = TextEditingController(text: '${_settings.port}');
   late final _token = TextEditingController(text: _settings.token);
   late final _name = TextEditingController(text: _settings.handheldName);
-  late String _language = _settings.language;
   late double _fps = _settings.cameraFps;
-  late bool _deadman = _settings.deadman;
-  late bool _camera = _settings.cameraOnStart;
-  late bool _map = _settings.mapOnStart;
   bool _showToken = false;
 
   String t(String key, [Map<String, Object> args = const {}]) => widget.services.t(key, args);
@@ -40,67 +40,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _save() async {
-    final port = int.tryParse(_port.text.trim());
-    await _settings.update(
-      host: _host.text.trim().isEmpty ? AppSettings.defaultHost : _host.text,
-      port: port != null && port > 0 && port < 65536 ? port : AppSettings.defaultPort,
-      token: _token.text,
-      handheldName: _name.text.trim().isEmpty ? 'Retroid' : _name.text,
-      language: _language,
-      cameraFps: _fps,
-      deadman: _deadman,
-      cameraOnStart: _camera,
-      mapOnStart: _map,
-    );
+  /// Keeps the connection fields: on Save and when leaving the page.
+  Future<void> _saveConnection() async {
+    final host = _host.text.trim().isEmpty ? AppSettings.defaultHost : _host.text.trim();
+    final parsed = int.tryParse(_port.text.trim());
+    final port = parsed != null && parsed > 0 && parsed < 65536 ? parsed : AppSettings.defaultPort;
+    final name = _name.text.trim().isEmpty ? 'Retroid' : _name.text.trim();
+    final token = _token.text;
+    if (host == _settings.host &&
+        port == _settings.port &&
+        token == _settings.token &&
+        name == _settings.handheldName) {
+      return;
+    }
+    await _settings.update(host: host, port: port, token: token, handheldName: name);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t('saved'))));
-    Navigator.of(context).pop();
   }
-
-  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
-    labelText: label,
-    isDense: true,
-    suffixIcon: suffix,
-    border: const OutlineInputBorder(),
-  );
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Palette.night,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+    return PopScope<Object?>(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop && widget.admin) _saveConnection();
+      },
+      child: Scaffold(
+        backgroundColor: Palette.night,
+        body: SafeArea(
+          child: ListenableBuilder(
+            listenable: _settings,
+            builder: (context, _) => Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                      ),
+                      Expanded(child: Text(t('settings'), style: Txt.title)),
+                    ],
                   ),
-                  Expanded(child: Text(t('settings'), style: Txt.title)),
-                  FilledButton.icon(
-                    onPressed: _save,
-                    icon: const Icon(Icons.check_rounded),
-                    label: Text(t('save')),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(flex: 6, child: _form()),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 5, child: _controls()),
+                      ],
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(flex: 6, child: _form()),
-                    const SizedBox(width: 16),
-                    Expanded(flex: 5, child: _gamepadTest()),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -108,97 +104,191 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _form() {
+    final gear = _settings.gear;
+    final share = AppSettings.speedScale[gear - 1];
+    final limits = widget.services.client.welcome?.limits;
+    final dwell = _dwells.reduce(
+      (a, b) => (a - _settings.stopDwell).abs() <= (b - _settings.stopDwell).abs() ? a : b,
+    );
     return ListView(
       padding: const EdgeInsets.only(left: 8, right: 4, bottom: 16),
       children: [
-        Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: TextField(
-                controller: _host,
-                keyboardType: TextInputType.url,
-                decoration: _field(t('robot_address')),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: _port,
-                keyboardType: TextInputType.number,
-                decoration: _field(t('port')),
-              ),
-            ),
-          ],
+        _section(t('section_control')),
+        _choice(
+          t('speed'),
+          SegmentedButton<int>(
+            segments: [
+              for (var level = 1; level <= 3; level++)
+                ButtonSegment(value: level, label: Text('$level  ${t('speed_$level')}')),
+            ],
+            selected: {gear},
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) => _settings.update(gear: selection.first),
+          ),
+          hint: limits == null
+              ? t('speed_share', {'p': (share * 100).round()})
+              : t('speed_max', {'v': (limits[0] * share).toStringAsFixed(2)}),
         ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _token,
-          obscureText: !_showToken,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: _field(
-            t('token'),
-            suffix: IconButton(
-              onPressed: () => setState(() => _showToken = !_showToken),
-              icon: Icon(_showToken ? Icons.visibility_off_rounded : Icons.visibility_rounded),
-            ),
+        _switch(t('deadman'), _settings.deadman, (value) => _settings.update(deadman: value)),
+
+        _section(t('section_display')),
+        _switch(t('video'), _settings.video, (value) => _settings.update(video: value)),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            t('camera_rate', {'n': _fps.round()}),
+            style: Txt.body.copyWith(color: _settings.video ? Palette.text : Palette.muted),
           ),
         ),
-        const SizedBox(height: 12),
-        TextField(controller: _name, decoration: _field(t('handheld_name'))),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(child: Text(t('language'), style: Txt.label)),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'id', label: Text('Indonesia')),
-                ButtonSegment(value: 'en', label: Text('English')),
-              ],
-              selected: {_language},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) => setState(() => _language = selection.first),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(t('camera_rate', {'n': _fps.round()}), style: Txt.label),
         Slider(
           value: _fps,
           min: 2,
           max: 15,
           divisions: 13,
           label: '${_fps.round()}',
-          onChanged: (value) => setState(() => _fps = value),
+          onChanged: _settings.video ? (value) => setState(() => _fps = value) : null,
+          onChangeEnd: (value) => _settings.update(cameraFps: value),
         ),
-        SwitchListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(t('camera_start'), style: Txt.body),
-          value: _camera,
-          onChanged: (value) => setState(() => _camera = value),
+        _switch(t('lidar_on_map'), _settings.lidar, (value) => _settings.update(lidar: value)),
+        _choice(
+          t('language'),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'id', label: Text('Indonesia')),
+              ButtonSegment(value: 'en', label: Text('English')),
+            ],
+            selected: {_settings.language},
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) => _settings.update(language: selection.first),
+          ),
         ),
-        SwitchListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(t('map_start'), style: Txt.body),
-          value: _map,
-          onChanged: (value) => setState(() => _map = value),
+
+        _section(t('section_patrol')),
+        _choice(
+          t('stop_dwell'),
+          SegmentedButton<double>(
+            segments: [
+              for (final value in _dwells)
+                ButtonSegment(value: value, label: Text('${value.round()} s')),
+            ],
+            selected: {dwell},
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) => _settings.update(stopDwell: selection.first),
+          ),
+          hint: t('stop_dwell_hint'),
         ),
-        SwitchListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(t('deadman'), style: Txt.body),
-          value: _deadman,
-          onChanged: (value) => setState(() => _deadman = value),
-        ),
+
+        if (widget.admin) ..._connection(),
       ],
     );
   }
 
-  Widget _gamepadTest() {
-    final pad = widget.services.gamepad;
+  List<Widget> _connection() {
+    InputDecoration field(String label, {Widget? suffix}) => InputDecoration(
+      labelText: label,
+      isDense: true,
+      suffixIcon: suffix,
+      border: const OutlineInputBorder(),
+    );
+    return [
+      _section(t('section_connection')),
+      Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: _host,
+              keyboardType: TextInputType.url,
+              decoration: field(t('robot_address')),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _port,
+              keyboardType: TextInputType.number,
+              decoration: field(t('port')),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _token,
+        obscureText: !_showToken,
+        autocorrect: false,
+        enableSuggestions: false,
+        decoration: field(
+          t('token'),
+          suffix: IconButton(
+            onPressed: () => setState(() => _showToken = !_showToken),
+            icon: Icon(_showToken ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      TextField(controller: _name, decoration: field(t('handheld_name'))),
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton.icon(
+          onPressed: _saveConnection,
+          icon: const Icon(Icons.check_rounded),
+          label: Text(t('save')),
+        ),
+      ),
+    ];
+  }
+
+  Widget _section(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Text(
+        title.toUpperCase(),
+        style: Txt.small.copyWith(
+          color: Palette.auto,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _choice(String label, Widget control, {String? hint}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Txt.body),
+          const SizedBox(height: 6),
+          control,
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(hint, style: Txt.small),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _switch(String title, bool value, ValueChanged<bool> onChanged) {
+    return SwitchListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(title, style: Txt.body),
+      value: value,
+      onChanged: onChanged,
+    );
+  }
+
+  /// Gamepad controls; with the gamepad test in admin mode (pressing buttons here while
+  /// connected would drive the robot).
+  Widget _controls() {
+    final language = _settings.language;
     final help = [
       ('L stick', t('help_left')),
       ('R stick', t('help_right')),
@@ -206,64 +296,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ('Start', t('help_start')),
       ('Select', t('help_select')),
       ('D-pad', t('help_dpad')),
-      ('L1 + A', robotAction('stand_up').label(_settings.language)),
-      ('L1 + Y', robotAction('sit_down').label(_settings.language)),
+      ('L1 + A', robotAction('stand_up').label(language)),
+      ('L1 + Y', robotAction('sit_down').label(language)),
       ('R1', t('help_r1')),
     ];
     return Glass(
       color: Palette.panel,
       radius: 14,
       padding: const EdgeInsets.all(12),
-      child: ListenableBuilder(
-        listenable: pad,
-        builder: (context, _) {
-          final pressed = GamepadButton.values.where(pad.pressed).map((b) => b.name).join('  ');
-          return ListView(
-            children: [
-              Text(t('gamepad_test'), style: Txt.title),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 74,
-                child: Row(
-                  children: [
-                    _StickDot(
-                      x: pad.axis(GamepadAxis.leftStickX),
-                      y: pad.axis(GamepadAxis.leftStickY),
-                    ),
-                    const SizedBox(width: 12),
-                    _StickDot(
-                      x: pad.axis(GamepadAxis.rightStickX),
-                      y: pad.axis(GamepadAxis.rightStickY),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        pressed.isEmpty ? t('gamepad_none') : pressed,
-                        style: Txt.small.copyWith(color: Palette.text),
-                      ),
-                    ),
-                  ],
-                ),
+      child: ListView(
+        children: [
+          if (widget.admin) ...[
+            _gamepadTest(),
+            const SizedBox(height: 14),
+          ],
+          Text(t('controls'), style: Txt.title),
+          const SizedBox(height: 8),
+          for (final (control, meaning) in help)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(
+                children: [
+                  SizedBox(width: 64, child: Text(control, style: Txt.label)),
+                  Expanded(child: Text(meaning, style: Txt.small)),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(pad.lastEvent, style: Txt.small),
-              const SizedBox(height: 12),
-              Text(t('controls'), style: Txt.label),
-              const SizedBox(height: 6),
-              for (final (control, meaning) in help)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      SizedBox(width: 64, child: Text(control, style: Txt.label)),
-                      Expanded(child: Text(meaning, style: Txt.small)),
-                    ],
-                  ),
-                ),
-            ],
-          );
-        },
+            ),
+        ],
       ),
+    );
+  }
+
+  Widget _gamepadTest() {
+    final pad = widget.services.gamepad;
+    return ListenableBuilder(
+      listenable: pad,
+      builder: (context, _) {
+        final pressed = GamepadButton.values.where(pad.pressed).map((b) => b.name).join('  ');
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t('gamepad_test'), style: Txt.title),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 74,
+              child: Row(
+                children: [
+                  _StickDot(
+                    x: pad.axis(GamepadAxis.leftStickX),
+                    y: pad.axis(GamepadAxis.leftStickY),
+                  ),
+                  const SizedBox(width: 12),
+                  _StickDot(
+                    x: pad.axis(GamepadAxis.rightStickX),
+                    y: pad.axis(GamepadAxis.rightStickY),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      pressed.isEmpty ? t('gamepad_none') : pressed,
+                      style: Txt.small.copyWith(color: Palette.text),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(pad.lastEvent, style: Txt.small),
+          ],
+        );
+      },
     );
   }
 }

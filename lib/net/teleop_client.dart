@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 
@@ -107,6 +108,9 @@ class TeleopClient extends ChangeNotifier {
   /// Share of telemetry messages lost recently, 0..1.
   double loss = 0;
 
+  /// Where the robot has been in this session (map frame), for the map.
+  final trail = <Offset>[];
+
   final cameraFrame = ValueNotifier<Uint8List?>(null);
   final lidarPoints = ValueNotifier<Float32List?>(null);
   final routePoints = ValueNotifier<List<RoutePoint>>(const []);
@@ -186,6 +190,7 @@ class TeleopClient extends ChangeNotifier {
     state = const RobotState();
     rttMs = null;
     loss = 0;
+    trail.clear();
     cameraFrame.value = null;
     lidarPoints.value = null;
     routePoints.value = const [];
@@ -228,6 +233,9 @@ class TeleopClient extends ChangeNotifier {
     drive(0, 0, 0);
     return command('estop');
   }
+
+  /// Forgets where the robot has been (a new route recording starts); shown on the next state.
+  void clearTrail() => trail.clear();
 
   /// Turns the camera / lidar streams on or off, and sets the camera rate.
   void setStreams({bool? camera, bool? lidar, double? fps}) {
@@ -394,6 +402,7 @@ class TeleopClient extends ChangeNotifier {
         if (!isLive) return;
         final next = RobotState.fromJson(message);
         _trackLoss(next.seq);
+        _trackTrail(next.pose);
         state = next;
         _lastState = now;
         if (status == LinkStatus.lost) {
@@ -436,6 +445,14 @@ class TeleopClient extends ChangeNotifier {
       case 'bye':
         if (status == LinkStatus.connected) _setStatus(LinkStatus.lost);
     }
+  }
+
+  void _trackTrail(Pose? pose) {
+    if (pose == null) return;
+    final here = Offset(pose.x, pose.y);
+    if (trail.isNotEmpty && (trail.last - here).distance < 0.1) return;
+    trail.add(here);
+    if (trail.length > 3000) trail.removeRange(0, 1000);
   }
 
   void _trackLoss(int seq) {

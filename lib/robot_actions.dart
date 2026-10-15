@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// How a robot driver command looks in the action menu.
+/// How a robot driver command looks on the action rail.
 class RobotAction {
   const RobotAction(this.name, this.icon, this.labelId, this.labelEn, {this.confirm = false});
 
@@ -47,7 +47,13 @@ const _known = <RobotAction>[
   RobotAction('hello', Icons.waving_hand_rounded, 'Sapa', 'Hello'),
   RobotAction('stretch', Icons.self_improvement_rounded, 'Peregangan', 'Stretch'),
   RobotAction('dance', Icons.music_note_rounded, 'Joget', 'Dance', confirm: true),
-  RobotAction('enter_lab_mode', Icons.science_rounded, 'Masuk mode lab', 'Lab mode on', confirm: true),
+  RobotAction(
+    'enter_lab_mode',
+    Icons.science_rounded,
+    'Masuk mode lab',
+    'Lab mode on',
+    confirm: true,
+  ),
   RobotAction('exit_lab_mode', Icons.science_outlined, 'Keluar mode lab', 'Lab mode off'),
   RobotAction(
     'enter_entertainment_mode',
@@ -56,7 +62,12 @@ const _known = <RobotAction>[
     'Fun mode on',
     confirm: true,
   ),
-  RobotAction('exit_entertainment_mode', Icons.celebration_outlined, 'Keluar hiburan', 'Fun mode off'),
+  RobotAction(
+    'exit_entertainment_mode',
+    Icons.celebration_outlined,
+    'Keluar hiburan',
+    'Fun mode off',
+  ),
   RobotAction(
     'sdk_control_right',
     Icons.sports_esports_rounded,
@@ -89,9 +100,3 @@ RobotAction robotAction(String name) {
   final label = words.isEmpty ? name : words[0].toUpperCase() + words.substring(1);
   return RobotAction(name, Icons.bolt_rounded, label, label);
 }
-
-/// Up to two everyday postures for the quick buttons beside the stop button.
-List<String> quickActions(List<String> robotCommands) => const [
-  'stand_up',
-  'sit_down',
-].where(robotCommands.contains).toList();

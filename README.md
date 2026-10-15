@@ -6,15 +6,16 @@ landscape. It talks the UDP teleop protocol v1 straight to `teleop_udp_node`
 ([PROTOCOL.md](https://github.com/DarmawanRobotics/Pashupati/blob/dev/src/robot_bridge/PROTOCOL.md));
 there is no ROS on the handheld.
 
-- Full-screen robot camera, a top-down lidar map with the loaded route, live battery, link,
-  protective field and health.
-- Floating thumb sticks (left drives and strafes, right turns) or the physical sticks, three speed
-  gears, AUTO / REMOTE switch.
-- One-tap STOP (software e-stop), released only by holding.
-- Robot actions menu built from the robot's own `robot_commands` (stand up, sit down, gaits, speed
-  gears, ...), with a confirmation for anything that moves the robot on its own.
-- Patrol panel: localize, load a route, start / pause / resume / stop, record a route, stop points,
-  record AprilTags.
+- One home screen, no menus: two views, the camera and a top-down map, one big and one small
+  (tap the small one to swap). The map shows the loaded route with its waypoints and stop points,
+  where the robot has been, the lidar and the robot.
+- Mapping and patrol icons on top: record a route, mark stop points, record AprilTags, localize,
+  pick a route, start / pause / resume, end.
+- STOP (software e-stop, released only by holding) and the robot's own `robot_commands` (stand up,
+  sit down, gaits, ...) as icons on the right; anything that moves the robot on its own asks first.
+- Floating thumb sticks (left drives and strafes, right turns) or the physical sticks, AUTO /
+  REMOTE switch, live battery, link, protective field and health.
+- Settings under the gear: speed level, video, lidar on the map, language, inspection time.
 - Finds robots on the LAN by itself; Indonesian and English.
 
 ## Setup
@@ -54,16 +55,20 @@ on their own.
 |---|---|---|
 | Drive and strafe | left half of the screen | left stick |
 | Turn | right half of the screen | right stick |
-| STOP (software e-stop) | red button | B |
+| STOP (software e-stop) | red button | B, also on the other pages |
 | AUTO / REMOTE | switch on top | Start |
-| Robot actions | grid button under STOP | Select; L1 + A stand up, L1 + Y sit down |
-| Speed gear (30 / 60 / 100 % of the robot limits) | 1 2 3 at the bottom | D-pad up / down |
+| Swap camera and map | tap the small view | Select |
+| Speed level (30 / 60 / 100 % of the robot limits) | gear, Speed | D-pad up / down |
+| Robot actions | icons under STOP | L1 + A stand up, L1 + Y sit down |
 
 The robot only takes the joystick in REMOTE; in AUTO navigation drives. After a STOP nothing but
 zero reaches the robot until "Hold to release" is held for a second.
 
-**Settings** are hidden: tap the version on the start screen three times (robot address, token,
-handheld name, language, camera rate, R1 to drive, and a gamepad test).
+**Teach and patrol:** REMOTE, Record, drive the route and tap Point where the robot should stop and
+inspect, Finish. Then Routes, pick it, AUTO, Start.
+
+**Settings** (gear) apply at once. The robot address, token, handheld name and a gamepad test are
+hidden: tap the version on the start screen three times.
 
 ## Code
 
@@ -72,8 +77,8 @@ lib/
 ├── protocol/   messages.dart (JSON), streams.dart (chunked camera / lidar / route)
 ├── net/        teleop_client.dart (session, commands, joystick), discovery.dart
 ├── input/      gamepad_input.dart (gamepads, normalized)
-├── widgets/    hud, sticks, camera, lidar map, actions and patrol panels
-├── screens/    connect, drive, settings
+├── widgets/    hud, sticks, camera, map
+├── screens/    connect, drive (home), routes, settings
 ├── robot_actions.dart   icons and labels of known robot commands
 └── l10n.dart            Indonesian and English text
 ```

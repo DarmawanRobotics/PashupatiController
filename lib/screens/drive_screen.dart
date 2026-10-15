@@ -10,16 +10,15 @@ import '../net/teleop_client.dart';
 import '../robot_actions.dart';
 import '../settings.dart';
 import '../theme.dart';
-import '../widgets/actions_panel.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/hud.dart';
-import '../widgets/lidar_map.dart';
-import '../widgets/patrol_panel.dart';
+import '../widgets/map_view.dart';
 import '../widgets/stick.dart';
+import 'routes_screen.dart';
+import 'settings_screen.dart';
 
-enum _Panel { none, actions, patrol }
-
-/// Live driving: camera, sticks, mode, e-stop, robot actions and patrol controls.
+/// Home while connected: the camera and the map (tap the small box to swap them), thumb sticks,
+/// mapping and patrol icons on top, STOP and the robot's own actions on the right.
 class DriveScreen extends StatefulWidget {
   const DriveScreen({super.key, required this.services});
 
@@ -30,23 +29,31 @@ class DriveScreen extends StatefulWidget {
 }
 
 class _DriveScreenState extends State<DriveScreen> {
-  /// Share of the robot's speed limits per gear.
-  static const _gearScale = [0.3, 0.6, 1.0];
+  /// Navigation states in which no patrol is under way (Start shows instead of Pause).
+  static const _idleNav = {'NAV_INACTIVE', 'NO_PATH', 'PAUSED', 'GOAL_REACHED'};
 
   Services get s => widget.services;
   TeleopClient get client => widget.services.client;
 
   Offset _move = Offset.zero;
   Offset _turn = Offset.zero;
-  late int _gear = widget.services.settings.gear;
-  late bool _showMap = widget.services.settings.mapOnStart;
-  _Panel _panel = _Panel.none;
   final Set<String> _busy = {};
   Toast? _toast;
   Timer? _toastTimer;
   Timer? _loop;
   bool _hinted = false;
   bool _suspended = false;
+
+  /// Pages and dialogs open over this screen; the sticks rest meanwhile.
+  int _covers = 0;
+
+  /// Map: keep the robot in the middle instead of the whole route.
+  bool _follow = false;
+
+  /// The route being recorded: since when, and the stop points marked in it.
+  DateTime? _recordingSince;
+  final List<Offset> _marks = [];
+
   StreamSubscription<GamepadButton>? _buttons;
   late final AppLifecycleListener _lifecycle;
 
@@ -56,6 +63,9 @@ class _DriveScreenState extends State<DriveScreen> {
     _loop = Timer.periodic(const Duration(milliseconds: 50), (_) => _drive());
     _buttons = s.gamepad.presses.listen(_onButton);
     _lifecycle = AppLifecycleListener(onPause: _suspend, onResume: _resume);
+    client.addListener(_onClient);
+    s.settings.addListener(_onSettings);
+    _onClient();
   }
 
   @override
@@ -64,6 +74,8 @@ class _DriveScreenState extends State<DriveScreen> {
     _toastTimer?.cancel();
     _buttons?.cancel();
     _lifecycle.dispose();
+    client.removeListener(_onClient);
+    s.settings.removeListener(_onSettings);
     super.dispose();
   }
 
@@ -71,6 +83,10 @@ class _DriveScreenState extends State<DriveScreen> {
 
   /// 20 Hz: touch sticks win over the gamepad; the client only sends in REMOTE mode.
   void _drive() {
+    if (_covers > 0) {
+      client.drive(0, 0, 0);
+      return;
+    }
     var x = _move.dx, y = _move.dy, r = _turn.dx;
     if (_move == Offset.zero && _turn == Offset.zero) {
       final pad = s.gamepad;
@@ -81,7 +97,7 @@ class _DriveScreenState extends State<DriveScreen> {
       }
     }
     final limits = client.welcome?.limits ?? const [0.5, 0.3, 1.0];
-    final scale = _gearScale[_gear - 1];
+    final scale = AppSettings.speedScale[s.settings.gear - 1];
     // stick up = forward (+x), stick right = right (-y), turn right = clockwise (-z)
     client.drive(y * limits[0] * scale, -x * limits[1] * scale, -r * limits[2] * scale);
 
@@ -98,24 +114,48 @@ class _DriveScreenState extends State<DriveScreen> {
   }
 
   void _onButton(GamepadButton button) {
+    if (button == GamepadButton.b) {
+      _estop(); // STOP works from every page
+      return;
+    }
+    if (_covers > 0) return; // settings, routes or a dialog is open
     final shift = s.gamepad.pressed(GamepadButton.leftBumper);
     switch (button) {
-      case GamepadButton.b:
-        _estop();
       case GamepadButton.start:
         _setMode(client.state.remote ? 'auto' : 'remote');
       case GamepadButton.back:
-        _toggle(_Panel.actions);
+        _swapViews();
       case GamepadButton.dpadUp:
-        _setGear(_gear + 1);
+        _setGear(s.settings.gear + 1);
       case GamepadButton.dpadDown:
-        _setGear(_gear - 1);
+        _setGear(s.settings.gear - 1);
       case GamepadButton.a when shift:
         _robotAction('stand_up');
       case GamepadButton.y when shift:
         _robotAction('sit_down');
       default:
         break;
+    }
+  }
+
+  /// Follows the robot's recording flag; a reconnect (no telemetry yet) changes nothing.
+  void _onClient() {
+    final state = client.state;
+    if (client.status != LinkStatus.connected || state.seq == 0) return;
+    if (state.recording) {
+      _recordingSince ??= DateTime.now();
+    } else {
+      _recordingSince = null;
+    }
+  }
+
+  /// Settings changed (here or on the settings page): apply the streams at once.
+  void _onSettings() {
+    final settings = s.settings;
+    if (client.cameraEnabled != settings.video ||
+        client.lidarEnabled != settings.lidar ||
+        client.cameraFps != settings.cameraFps) {
+      client.setStreams(camera: settings.video, lidar: settings.lidar, fps: settings.cameraFps);
     }
   }
 
@@ -163,17 +203,60 @@ class _DriveScreenState extends State<DriveScreen> {
 
   void _setGear(int gear) {
     final next = math.min(3, math.max(1, gear));
-    if (next == _gear) return;
+    if (next == s.settings.gear) return;
     HapticFeedback.selectionClick();
-    setState(() => _gear = next);
     s.settings.update(gear: next);
+    _show(
+      Toast(s.t('speed_toast', {'n': next, 'name': s.t('speed_$next')}), icon: Icons.speed_rounded),
+    );
   }
 
-  void _toggle(_Panel panel) => setState(() => _panel = _panel == panel ? _Panel.none : panel);
+  void _swapViews() {
+    HapticFeedback.selectionClick();
+    s.settings.update(mainView: s.settings.mainView == 'map' ? 'camera' : 'map');
+  }
 
-  void _toggleMap() {
-    setState(() => _showMap = !_showMap);
-    client.setStreams(lidar: _showMap);
+  Future<void> _toggleRecording() async {
+    if (client.state.recording) {
+      await _run('record_stop', label: s.t('record_saved'));
+      return;
+    }
+    final result = await _run('record_start', label: s.t('record_started'));
+    if (!result.ok || !mounted) return;
+    // a fresh route: the map shows only what this recording covers
+    setState(() {
+      _recordingSince = DateTime.now();
+      _marks.clear();
+      client.clearTrail();
+    });
+  }
+
+  Future<void> _markStop() async {
+    final pose = client.state.pose;
+    final dwell = s.settings.stopDwell;
+    final result = await _run(
+      'mark_stop',
+      args: {'dwell': dwell},
+      label: s.t('stop_marked', {'s': dwell.round()}),
+    );
+    if (result.ok && pose != null && mounted) setState(() => _marks.add(Offset(pose.x, pose.y)));
+  }
+
+  /// Start, pause or resume the patrol; in REMOTE the robot only follows it once in AUTO.
+  Future<void> _navPrimary() async {
+    final state = client.state;
+    final CommandResult result;
+    if (state.navPaused) {
+      result = await _run('nav_resume', label: s.t('nav_resumed'), quiet: state.remote);
+    } else if (!_idleNav.contains(state.nav)) {
+      await _run('nav_pause', label: s.t('nav_paused'));
+      return;
+    } else {
+      result = await _run('nav_start', label: s.t('nav_started'), quiet: state.remote);
+    }
+    if (result.ok && mounted && client.state.remote) {
+      _show(Toast(s.t('remote_nav_hint'), color: Palette.auto, icon: Icons.info_outline_rounded));
+    }
   }
 
   void _robotAction(String name) {
@@ -189,7 +272,7 @@ class _DriveScreenState extends State<DriveScreen> {
         s.t('confirm_action_body'),
         s.t('run'),
       );
-      if (!ok) return;
+      if (!ok || !mounted) return;
     }
     await _run(action.name, label: label);
   }
@@ -202,23 +285,45 @@ class _DriveScreenState extends State<DriveScreen> {
     });
   }
 
+  /// Runs [open] (a page or a dialog over this screen) with the sticks at rest until it closes.
+  Future<T> _cover<T>(Future<T> Function() open) async {
+    _covers++;
+    _move = Offset.zero;
+    _turn = Offset.zero;
+    client.drive(0, 0, 0);
+    try {
+      return await open();
+    } finally {
+      _covers--;
+    }
+  }
+
+  Future<void> _push(Widget page) =>
+      _cover(() => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page)));
+
+  Future<void> _openSettings() => _push(SettingsScreen(services: s));
+
+  Future<void> _openRoutes() => _push(RoutesScreen(services: s, onRun: _run));
+
   Future<bool> _confirm(String title, String body, String action) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Palette.panel,
-        title: Text(title, style: Txt.title),
-        content: Text(body, style: Txt.body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(s.t('cancel')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(action),
-          ),
-        ],
+    final result = await _cover(
+      () => showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Palette.panel,
+          title: Text(title, style: Txt.title),
+          content: Text(body, style: Txt.body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(s.t('cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(action),
+            ),
+          ],
+        ),
       ),
     );
     return result ?? false;
@@ -270,29 +375,51 @@ class _DriveScreenState extends State<DriveScreen> {
   }
 
   Widget _layout(Size size) {
+    const top = 50.0;
+    const scrim = [Color(0xA6000000), Color(0x00000000)];
     final state = client.state;
     final modeColor = Palette.forMode(state.mode);
-    final robotCommands = client.welcome?.robotCommands ?? const <String>[];
+    final mapMain = s.settings.mainView == 'map';
+    final insetWidth = math.max(150.0, math.min(300.0, size.width * 0.27));
+    final insetHeight = insetWidth * 0.62;
+    // the middle column between the small view and the right rail
+    final middleLeft = insetWidth + 20;
+    const middleRight = 82.0;
+    final status = _statusPill();
     final overlay = _linkOverlay();
-    const scrim = [Color(0xA6000000), Color(0x00000000)];
+
+    final camera = CameraView(
+      frames: client.cameraFrame,
+      enabled: client.cameraEnabled,
+      offText: s.t('camera_off'),
+      waitText: s.t('camera_wait'),
+    );
+    final map = MapView(
+      points: client.lidarPoints,
+      route: client.routePoints,
+      trail: client.trail,
+      marks: state.recording ? _marks : const [],
+      pose: state.pose,
+      modeColor: modeColor,
+      lidar: client.lidarEnabled,
+      follow: _follow,
+      notLocalizedText: s.t('not_localized'),
+      compact: !mapMain,
+    );
 
     return Stack(
       children: [
+        // the big view; both boxes keep their key when they swap, so the video keeps playing
         Positioned.fill(
-          key: const ValueKey('camera'),
-          child: CameraView(
-            frames: client.cameraFrame,
-            enabled: client.cameraEnabled,
-            offText: s.t('camera_off'),
-            waitText: s.t('camera_wait'),
-          ),
+          key: ValueKey(mapMain ? 'map' : 'camera'),
+          child: _ViewBox(child: mapMain ? map : camera),
         ),
         const Positioned(
           key: ValueKey('scrim-top'),
           left: 0,
           right: 0,
           top: 0,
-          height: 96,
+          height: 124,
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -310,7 +437,7 @@ class _DriveScreenState extends State<DriveScreen> {
           left: 0,
           right: 0,
           bottom: 0,
-          height: 120,
+          height: 96,
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -328,11 +455,11 @@ class _DriveScreenState extends State<DriveScreen> {
         Positioned(
           key: const ValueKey('stick-move'),
           left: 0,
-          top: 52,
+          top: top,
           bottom: 0,
           width: size.width * 0.46,
           child: StickZone(
-            home: const Alignment(-0.2, 0.5),
+            home: const Alignment(-0.2, 0.55),
             icon: Icons.open_with_rounded,
             color: modeColor,
             onChanged: (value) => _move = value,
@@ -341,11 +468,11 @@ class _DriveScreenState extends State<DriveScreen> {
         Positioned(
           key: const ValueKey('stick-turn'),
           right: 0,
-          top: 52,
+          top: top,
           bottom: 0,
           width: size.width * 0.46,
           child: StickZone(
-            home: const Alignment(0.15, 0.72),
+            home: const Alignment(0.05, 0.72),
             icon: Icons.threesixty_rounded,
             horizontalOnly: true,
             color: modeColor,
@@ -353,49 +480,59 @@ class _DriveScreenState extends State<DriveScreen> {
           ),
         ),
 
+        // the small view: tap it to swap
+        Positioned(
+          key: ValueKey(mapMain ? 'camera' : 'map'),
+          left: 10,
+          top: top,
+          width: insetWidth,
+          height: insetHeight,
+          child: _ViewBox(onTap: _swapViews, child: mapMain ? camera : map),
+        ),
+        Positioned(
+          key: const ValueKey('view-buttons'),
+          left: 10,
+          top: top + insetHeight + 8,
+          child: _viewButtons(),
+        ),
+
         Positioned(key: const ValueKey('top'), left: 8, right: 8, top: 6, child: _topBar()),
-        Positioned(key: const ValueKey('left'), left: 10, top: 60, child: _leftRail()),
-        if (_showMap)
-          Positioned(
-            key: const ValueKey('map'),
-            left: 64,
-            top: 60,
-            width: 184,
-            height: 138,
-            child: LidarMap(
-              points: client.lidarPoints,
-              route: client.routePoints,
-              pose: state.pose,
-              modeColor: modeColor,
-            ),
-          ),
+        Positioned(
+          key: const ValueKey('toolbar'),
+          left: middleLeft,
+          right: middleRight,
+          top: top,
+          child: Center(child: _toolbar()),
+        ),
         Positioned(
           key: const ValueKey('right'),
           right: 10,
-          top: 58,
-          child: _rightRail(robotCommands),
+          top: top,
+          // the robot actions stay clear of the right thumb
+          child: _rightRail(size.height * 0.72 - top - 70),
         ),
-        Positioned(
-          key: const ValueKey('gear'),
-          left: 0,
-          right: 0,
-          bottom: 10,
-          child: Center(child: _gearBar(modeColor)),
-        ),
+        if (status != null)
+          Positioned(
+            key: const ValueKey('status'),
+            left: size.width * 0.2,
+            right: size.width * 0.2,
+            bottom: 12,
+            child: IgnorePointer(child: Center(child: status)),
+          ),
 
         if (state.estop)
           Positioned(
             key: const ValueKey('estop'),
-            top: 56,
-            left: size.width * 0.22,
-            right: size.width * 0.22,
+            top: top + 70,
+            left: middleLeft,
+            right: middleRight,
             child: _estopBanner(),
           ),
         Positioned(
           key: const ValueKey('toast'),
-          top: state.estop ? 106 : 58,
-          left: size.width * 0.2,
-          right: size.width * 0.2,
+          top: state.estop ? top + 122 : top + 70,
+          left: middleLeft,
+          right: middleRight,
           child: IgnorePointer(
             child: Center(
               child: AnimatedSwitcher(
@@ -407,50 +544,6 @@ class _DriveScreenState extends State<DriveScreen> {
             ),
           ),
         ),
-
-        if (_panel != _Panel.none)
-          Positioned(
-            key: const ValueKey('barrier'),
-            left: 0,
-            top: 52,
-            right: 76,
-            bottom: 0,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() => _panel = _Panel.none),
-            ),
-          ),
-        if (_panel == _Panel.actions)
-          Positioned(
-            key: const ValueKey('actions'),
-            right: 80,
-            top: 58,
-            bottom: 10,
-            width: math.min(340.0, size.width * 0.52),
-            child: ActionsPanel(
-              title: s.t('actions'),
-              emptyText: s.t('no_actions'),
-              commands: robotCommands,
-              language: s.settings.language,
-              busy: _busy,
-              onRun: _runAction,
-              onClose: () => _toggle(_Panel.actions),
-            ),
-          ),
-        if (_panel == _Panel.patrol)
-          Positioned(
-            key: const ValueKey('patrol'),
-            left: 64,
-            top: 58,
-            bottom: 10,
-            width: math.min(330.0, size.width * 0.5),
-            child: PatrolPanel(
-              services: s,
-              busy: _busy,
-              onRun: _run,
-              onClose: () => _toggle(_Panel.patrol),
-            ),
-          ),
 
         if (overlay != null) Positioned.fill(key: const ValueKey('overlay'), child: overlay),
       ],
@@ -548,6 +641,13 @@ class _DriveScreenState extends State<DriveScreen> {
                   const SizedBox(width: 6),
                 ],
                 BatteryChip(battery: state.battery),
+                const SizedBox(width: 8),
+                HudButton(
+                  icon: Icons.settings_rounded,
+                  size: 36,
+                  label: s.t('settings'),
+                  onPressed: _openSettings,
+                ),
               ],
             ),
           ),
@@ -556,6 +656,7 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
+  /// Protective field: a quiet shield while clear, its state in words when it slows or stops.
   Widget? _fieldChip(String? field) {
     if (field == null) return null;
     final (color, key) = switch (field) {
@@ -565,125 +666,215 @@ class _DriveScreenState extends State<DriveScreen> {
       'stale' => (Palette.caution, 'field_stale'),
       _ => (Palette.muted, 'field_off'),
     };
+    final loud = const {'limited', 'stop', 'stale'}.contains(field);
     return HudChip(
       border: color.withValues(alpha: 0.5),
+      onTap: () => _show(Toast(s.t(key), color: color, icon: Icons.shield_rounded)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.shield_rounded, size: 15, color: color),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              s.t(key),
-              style: Txt.label.copyWith(color: color),
-              overflow: TextOverflow.ellipsis,
+          Icon(Icons.shield_rounded, size: 16, color: color),
+          if (loud) ...[
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                s.t(key),
+                style: Txt.label.copyWith(color: color),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _leftRail() {
-    return Column(
+  /// Under the small view: swap the two views, and keep the robot centred on the map.
+  Widget _viewButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         HudButton(
-          icon: Icons.route_rounded,
-          label: s.t('patrol'),
-          tint: Palette.auto,
-          active: _panel == _Panel.patrol,
-          onPressed: () => _toggle(_Panel.patrol),
+          icon: Icons.swap_horiz_rounded,
+          size: 36,
+          label: s.t('swap_views'),
+          onPressed: _swapViews,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(width: 8),
         HudButton(
-          icon: Icons.radar_rounded,
-          label: s.t('map'),
-          active: _showMap,
-          onPressed: _toggleMap,
-        ),
-        const SizedBox(height: 10),
-        HudButton(
-          icon: client.cameraEnabled ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-          label: s.t('camera'),
-          active: client.cameraEnabled,
-          onPressed: () => client.setStreams(camera: !client.cameraEnabled),
+          icon: Icons.gps_fixed_rounded,
+          size: 36,
+          label: s.t('map_follow'),
+          tint: _follow ? Palette.auto : Palette.text,
+          active: _follow,
+          onPressed: () => setState(() => _follow = !_follow),
         ),
       ],
     );
   }
 
-  Widget _rightRail(List<String> robotCommands) {
+  /// Mapping (record a route, its stop points and the AprilTags) and patrol (localize, pick a
+  /// route, start / pause / resume, end).
+  Widget _toolbar() {
+    final state = client.state;
+    final welcome = client.welcome;
+    bool has(String command) => welcome?.has(command) ?? false;
+    bool busy(String command) => _busy.contains(command);
+    final recording = state.recording;
+    final running = !_idleNav.contains(state.nav);
+    const width = 50.0;
+
+    return Glass(
+      radius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ActionButton(
+              icon: recording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
+              label: s.t(recording ? 'act_finish' : 'act_record'),
+              tint: Palette.stop,
+              active: recording,
+              width: width,
+              busy: busy('record_start') || busy('record_stop'),
+              onPressed: has('record_start') ? _toggleRecording : null,
+            ),
+            ActionButton(
+              icon: Icons.add_location_alt_rounded,
+              label: s.t('act_stop_point'),
+              tint: Palette.caution,
+              width: width,
+              busy: busy('mark_stop'),
+              onPressed: has('mark_stop') && recording ? _markStop : null,
+            ),
+            ActionButton(
+              icon: Icons.qr_code_2_rounded,
+              label: s.t('act_tags'),
+              width: width,
+              busy: busy('record_tags'),
+              onPressed: has('record_tags')
+                  ? () => _run('record_tags', label: s.t('tags_recorded'))
+                  : null,
+            ),
+            const _ToolbarDivider(),
+            ActionButton(
+              icon: Icons.my_location_rounded,
+              label: s.t('act_localize'),
+              width: width,
+              busy: busy('localize'),
+              onPressed: has('localize') ? () => _run('localize', label: s.t('localized')) : null,
+            ),
+            ActionButton(
+              icon: Icons.route_rounded,
+              label: s.t('act_routes'),
+              width: width,
+              onPressed: has('list_routes') && has('load_route') ? _openRoutes : null,
+            ),
+            ActionButton(
+              icon: running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              label: s.t(state.navPaused ? 'act_resume' : (running ? 'act_pause' : 'act_start')),
+              tint: Palette.auto,
+              active: running,
+              width: width,
+              busy: busy('nav_start') || busy('nav_pause') || busy('nav_resume'),
+              onPressed: has('nav_start') && has('nav_pause') ? _navPrimary : null,
+            ),
+            ActionButton(
+              icon: Icons.stop_rounded,
+              label: s.t('act_end'),
+              width: width,
+              busy: busy('nav_stop'),
+              onPressed: has('nav_stop') && state.nav != 'NAV_INACTIVE'
+                  ? () => _run('nav_stop', label: s.t('nav_ended'))
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// STOP, then the robot driver's own commands (stand up, sit down, gaits, ...).
+  Widget _rightRail(double listHeight) {
+    final commands = client.welcome?.robotCommands ?? const <String>[];
+    final language = s.settings.language;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         StopButton(engaged: client.state.estop, onPressed: _estop),
-        const SizedBox(height: 12),
-        HudButton(
-          icon: Icons.apps_rounded,
-          label: s.t('actions'),
-          active: _panel == _Panel.actions,
-          tint: Palette.remote,
-          onPressed: () => _toggle(_Panel.actions),
-        ),
-        for (final name in quickActions(robotCommands)) ...[
-          const SizedBox(height: 10),
-          HudButton(
-            icon: robotAction(name).icon,
-            label: robotAction(name).label(s.settings.language),
-            busy: _busy.contains(name),
-            onPressed: () => _runAction(robotAction(name)),
+        if (commands.isNotEmpty && listHeight >= 60) ...[
+          const SizedBox(height: 8),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: listHeight),
+            child: Glass(
+              radius: 16,
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final name in commands)
+                      ActionButton(
+                        icon: robotAction(name).icon,
+                        label: robotAction(name).label(language),
+                        width: 58,
+                        busy: _busy.contains(name),
+                        onPressed: () => _runAction(robotAction(name)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ],
     );
   }
 
-  Widget _gearBar(Color modeColor) {
-    final cmd = client.state.cmd;
-    final speed = math.sqrt(cmd[0] * cmd[0] + cmd[1] * cmd[1]);
+  /// Recording or patrol state, at the bottom between the thumbs.
+  Widget? _statusPill() {
+    final state = client.state;
+    final since = _recordingSince;
+    final String text;
+    final Color color;
+    final IconData icon;
+    if (state.recording && since != null) {
+      final elapsed = DateTime.now().difference(since);
+      String two(int value) => value.toString().padLeft(2, '0');
+      text = [
+        '${s.t('rec')} ${two(elapsed.inMinutes)}:${two(elapsed.inSeconds % 60)}',
+        if (_marks.isNotEmpty) s.t('stop_count', {'n': _marks.length}),
+      ].join('  ·  ');
+      color = Palette.stop;
+      icon = Icons.fiber_manual_record_rounded;
+    } else if (state.nav != 'NAV_INACTIVE') {
+      final label = s.navLabel(state.nav);
+      text = state.navMessage.isEmpty ? label : '$label  ·  ${state.navMessage}';
+      color = switch (state.nav) {
+        'FOLLOWING' || 'APPROACHING' || 'DWELLING' => Palette.auto,
+        'GOAL_REACHED' => Palette.ok,
+        'PAUSED' || 'NO_PATH' || 'TF_UNAVAILABLE' => Palette.caution,
+        _ => Palette.stop,
+      };
+      icon = Icons.route_rounded;
+    } else {
+      return null;
+    }
     return Glass(
-      radius: 20,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      color: Palette.glassHigh,
+      border: color.withValues(alpha: 0.6),
+      radius: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Tooltip(
-              message: s.t('gear'),
-              child: const Icon(Icons.speed_rounded, size: 18, color: Palette.muted),
-            ),
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(text, style: Txt.label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
-          for (var gear = 1; gear <= 3; gear++)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _setGear(gear),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 36,
-                height: 28,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: gear == _gear ? modeColor : Colors.transparent,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  '$gear',
-                  style: Txt.figure.copyWith(
-                    color: gear == _gear ? Palette.night : Palette.muted,
-                  ),
-                ),
-              ),
-            ),
-          SizedBox(
-            width: 74,
-            child: Text(
-              '${speed.toStringAsFixed(2)} m/s',
-              textAlign: TextAlign.right,
-              style: Txt.figure.copyWith(fontSize: 13),
-            ),
-          ),
-          const SizedBox(width: 8),
         ],
       ),
     );
@@ -790,6 +981,51 @@ class _DriveScreenState extends State<DriveScreen> {
           ),
         );
     }
+  }
+}
+
+/// The camera or the map, full screen or as the small framed box that swaps them on tap.
+///
+/// The same widget in both places, so a view keeps its state (the decoded video) when moved.
+class _ViewBox extends StatelessWidget {
+  const _ViewBox({required this.child, this.onTap});
+
+  final Widget child;
+
+  /// Set for the small box.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final small = onTap != null;
+    final radius = BorderRadius.circular(small ? 12 : 0);
+    final frame = Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.5);
+    return GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(borderRadius: radius, border: small ? frame : null),
+        child: ClipRRect(
+          borderRadius: radius,
+          clipBehavior: small ? Clip.antiAlias : Clip.none,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolbarDivider extends StatelessWidget {
+  const _ToolbarDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 34,
+      margin: const EdgeInsets.symmetric(horizontal: 5),
+      color: Palette.line,
+    );
   }
 }
 

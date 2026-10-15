@@ -10,7 +10,7 @@ import '../widgets/hud.dart';
 import 'drive_screen.dart';
 import 'settings_screen.dart';
 
-const appVersion = '2.0.0';
+const appVersion = '2.1.0';
 
 /// Robot picker: the main robot from the settings plus every robot that answers on the LAN.
 class ConnectScreen extends StatefulWidget {
@@ -62,11 +62,7 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     final settings = s.settings;
     final client = s.client
       ..handheldName = settings.handheldName
-      ..setStreams(
-        camera: settings.cameraOnStart,
-        lidar: settings.mapOnStart,
-        fps: settings.cameraFps,
-      );
+      ..setStreams(camera: settings.video, lidar: settings.lidar, fps: settings.cameraFps);
     setState(() => _target = host);
     client.connect(host: host, port: settings.port, token: settings.token);
   }
@@ -112,7 +108,11 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     _versionTaps = 0;
     _stopScan();
     Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (context) => SettingsScreen(services: s)))
+        .push(
+          MaterialPageRoute<void>(
+            builder: (context) => SettingsScreen(services: s, admin: true),
+          ),
+        )
         .then((_) {
           if (mounted) setState(_startScan);
         });

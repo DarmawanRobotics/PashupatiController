@@ -137,6 +137,7 @@ void main() {
     expect(tr('id', 'port'), 'Port');
     expect(robotAction('stand_up').label('id'), 'Berdiri');
     expect(robotAction('front_flip').label('en'), 'Front flip');
-    expect(quickActions(['sit_down', 'hello', 'stand_up']), ['stand_up', 'sit_down']);
+    expect(robotAction('damp').confirm, isTrue);
+    expect(tr('id', 'nav_FOLLOWING'), 'Patroli');
   });
 }

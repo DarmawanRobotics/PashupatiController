@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,7 +11,6 @@ class Glass extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     this.radius = 12,
-    this.blur = false,
     this.color = Palette.glass,
     this.border = Palette.line,
   });
@@ -21,15 +18,12 @@ class Glass extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double radius;
-
-  /// Frosted background; costs GPU, so only for large panels.
-  final bool blur;
   final Color color;
   final Color border;
 
   @override
   Widget build(BuildContext context) {
-    final box = DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
@@ -37,15 +31,10 @@ class Glass extends StatelessWidget {
       ),
       child: Padding(padding: padding, child: child),
     );
-    if (!blur) return box;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16), child: box),
-    );
   }
 }
 
-/// Round icon button of the side rails.
+/// Round icon button (disconnect, settings, view buttons).
 class HudButton extends StatelessWidget {
   const HudButton({
     super.key,
@@ -125,7 +114,7 @@ class HudChip extends StatelessWidget {
   }
 }
 
-/// Four rising bars for link quality (0..3 lit).
+/// Three rising bars for link quality (0..3 lit).
 class SignalBars extends StatelessWidget {
   const SignalBars({super.key, required this.level, required this.color});
 
@@ -325,7 +314,7 @@ class StopButton extends StatelessWidget {
   }
 }
 
-/// Message shown briefly under the top bar.
+/// Message shown briefly under the icons.
 class Toast {
   const Toast(this.text, {this.color = Palette.text, this.icon});
 
@@ -367,61 +356,77 @@ class ToastView extends StatelessWidget {
   }
 }
 
-/// Button inside the side panels.
-class PanelButton extends StatelessWidget {
-  const PanelButton({
+/// Icon with a short label under it: the mapping strip and the robot action rail.
+class ActionButton extends StatelessWidget {
+  const ActionButton({
     super.key,
     required this.icon,
     required this.label,
     required this.onPressed,
     this.tint = Palette.text,
+    this.active = false,
     this.busy = false,
-    this.filled = false,
+    this.width = 52,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
   final Color tint;
+
+  /// Highlighted (recording, current mode, ...).
+  final bool active;
   final bool busy;
-  final bool filled;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null && !busy;
-    final foreground = filled ? Palette.night : tint;
-    return Opacity(
-      opacity: onPressed == null ? 0.4 : 1,
-      child: Material(
-        color: filled ? tint : Colors.white.withValues(alpha: 0.06),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: filled ? tint : Palette.line),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: enabled ? onPressed : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            child: Row(
-              children: [
-                if (busy)
-                  SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
-                  )
-                else
-                  Icon(icon, size: 18, color: foreground),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: Txt.label.copyWith(color: foreground),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+    return Semantics(
+      button: true,
+      label: label,
+      child: Opacity(
+        opacity: onPressed == null ? 0.38 : 1,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: busy ? null : onPressed,
+            child: SizedBox(
+              width: width,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: active ? tint.withValues(alpha: 0.25) : Colors.transparent,
+                        border: Border.all(color: active ? tint : Colors.transparent, width: 1.5),
+                      ),
+                      child: Center(
+                        child: busy
+                            ? SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: tint),
+                              )
+                            : Icon(icon, size: 21, color: tint),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Txt.small.copyWith(fontSize: 10.5, height: 1, color: Palette.text),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
