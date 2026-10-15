@@ -24,7 +24,7 @@ Flutter 3.35 or newer, the handheld on USB with `adb devices` listing it.
 
 ```bash
 git clone git@github.com:DarmawanRobotics/flutter_teleop.git && cd flutter_teleop
-flutter create . --org com.darmawanrobotics --project-name flutter_teleop --platforms android
+flutter create . --org com.darmawanrobotics --project-name flutter_teleop --platforms android --empty
 flutter pub get
 flutter test
 flutter run --release
@@ -32,7 +32,8 @@ flutter run --release
 
 `flutter create .` runs once: it generates the Gradle project around `lib/` and keeps the files
 that are already here (`AndroidManifest.xml` with the network permission and landscape lock,
-`MainActivity.kt` with the gamepad hooks and keep-screen-on). Commit what it generates.
+`MainActivity.kt` with the gamepad hooks and keep-screen-on). `--empty` leaves out the counter-app
+test, which would not compile here. Commit what it generates.
 
 ## Robot side
 
