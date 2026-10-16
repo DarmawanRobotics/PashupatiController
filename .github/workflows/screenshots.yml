@@ -1,0 +1,40 @@
+name: screenshots
+
+# Renders the app's screens (test/screenshots_test.dart) and publishes them on the `screenshots`
+# branch, for the user manual in the Pashupati repository (docs/manual).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - test/screenshots_test.dart
+      - .github/workflows/screenshots.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test --dart-define=SCREENSHOTS=true test/screenshots_test.dart
+      - name: Publish on the screenshots branch
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd build/screenshots
+          ls -l
+          git init -q -b screenshots
+          git config user.name "Agus Darmawan"
+          git config user.email "darmawandeveloper@gmail.com"
+          git add -A
+          git commit -qm "docs: app screenshots of ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" screenshots
