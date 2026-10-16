@@ -86,7 +86,7 @@ class GlancePanel extends StatelessWidget {
     return _row(
       Icons.photo_library_rounded,
       full ? Palette.caution : Palette.muted,
-      t('queue_glance', {'n': inspection.queue}),
+      inspection.queue == 1 ? t('queue_glance_one') : t('queue_glance', {'n': inspection.queue}),
     );
   }
 

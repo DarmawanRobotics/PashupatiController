@@ -143,6 +143,7 @@ const _en = <String, String>{
   'every_min': 'Every {n} min',
   'queue_line': 'Queue: {n} of {m} frames waiting',
   'queue_glance': '{n} frames queued',
+  'queue_glance_one': '1 frame queued',
   'waited': 'waited {n} s',
   'pace_hint_queue':
       'A frame every interval, also while the AI is busy: they wait in a queue, '
@@ -331,7 +332,8 @@ const _id = <String, String>{
   'section_inspection': 'Inspeksi AI',
   'section_model': 'Model',
   'inspection_switch': 'Inspeksi lantai',
-  'inspection_switch_hint': 'Mati: tidak ada inspeksi, di titik stop juga; model dilepas dari memori.',
+  'inspection_switch_hint':
+      'Mati: tidak ada inspeksi, di titik stop juga; model dilepas dari memori.',
   'inspection_on': 'Inspeksi nyala',
   'inspection_off': 'Inspeksi mati',
   'pace': 'Ritme',
@@ -362,6 +364,7 @@ const _id = <String, String>{
   'every_min': 'Setiap {n} mnt',
   'queue_line': 'Antrean: {n} dari {m} foto menunggu',
   'queue_glance': '{n} foto antre',
+  'queue_glance_one': '1 foto antre',
   'waited': 'antre {n} dtk',
   'pace_hint_queue':
       'Foto diambil tiap interval walau AI sibuk: menunggu di antrean, '

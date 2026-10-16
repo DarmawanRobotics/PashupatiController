@@ -154,7 +154,8 @@ class _CameraViewState extends State<CameraView> {
   }
 }
 
-/// AprilTag outlines and ids and person boxes over the video, cropped the way BoxFit.cover crops the frame.
+/// AprilTag outlines and ids and person boxes over the video, cropped the way BoxFit.cover
+/// crops the frame.
 class _TagPainter extends CustomPainter {
   _TagPainter(this.tags, this.imageSize, [this.people = const []]);
 

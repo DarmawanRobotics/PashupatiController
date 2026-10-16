@@ -110,8 +110,8 @@ Map<String, dynamic> _state({
   'recording': recording,
   'estop': estop,
   'field': 'clear',
-  'pose': [9.0, 0.05, 0.0],
-  'battery': {'pct': 0.78, 'v': 50.2, 'a': -3.1, 'temp': 34.0},
+  'pose': [12.0, 2.0, math.pi / 2],
+  'battery': {'pct': 78.0, 'v': 50.2, 'a': -3.1, 'temp': 34.0},
   'health': {
     'ok': true,
     'issues': [],
@@ -129,7 +129,7 @@ Map<String, dynamic> _state({
     'interval': 2,
     'count': 214,
     'reports': 3,
-    'queue': 1,
+    'queue': 3,
     'queue_max': 50,
     'last': {'cat': 'none', 'ms': 1350, 'age': 2, 'source': 'periodic'},
   },
@@ -188,9 +188,10 @@ Future<Services> _services(WidgetTester tester, {String mainView = 'map'}) async
   final route = _route();
   client.routePoints.value = route;
   client.trail.addAll([
-    for (final p in route.where((p) => p.y < 0.01 && p.x <= 9.0)) Offset(p.x, p.y + 0.03),
+    for (final p in route.take(route.indexWhere((p) => p.x > 11.9 && p.y > 2.0)))
+      Offset(p.x + 0.03, p.y + 0.03),
   ]);
-  client.lidarPoints.value = _lidar(9.0, 0.05, 0.0);
+  client.lidarPoints.value = _lidar(12.0, 2.0, math.pi / 2);
   return Services(
     settings: settings,
     client: client,
