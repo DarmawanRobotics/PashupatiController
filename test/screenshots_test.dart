@@ -257,6 +257,9 @@ void main() {
   testWidgets('connection settings', skip: !_enabled, (tester) async {
     final services = await _services(tester);
     await _show(tester, SettingsScreen(services: services, admin: true));
+    final address = find.text('Robot address');
+    await tester.scrollUntilVisible(address, 120, scrollable: find.byType(Scrollable).first);
+    await tester.pump(const Duration(milliseconds: 300));
     await _save(tester, '02_connection');
   });
 
