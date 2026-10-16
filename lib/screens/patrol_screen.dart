@@ -382,7 +382,7 @@ class _PatrolScreenState extends State<PatrolScreen> {
     ];
   }
 
-  /// How often interval mode takes a frame for the queue: 1 s to 5 min.
+  /// How often interval mode takes a frame for the queue: 0.1 s to 5 min.
   Widget _intervalSlider(double current, bool live) {
     final index = _intervalDraft ?? _nearest(current);
     final seconds = _intervalDraft == null ? current : _intervals[index];

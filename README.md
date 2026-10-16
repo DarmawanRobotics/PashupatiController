@@ -9,7 +9,7 @@ them, watch through their camera, teach routes and run their AI inspection, from
 Pocket 4 or any Android device in landscape.**
 
 [![CI](https://github.com/DarmawanRobotics/PashupatiController/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DarmawanRobotics/PashupatiController/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-2.6.0-4FD1C5)
+![Version](https://img.shields.io/badge/version-2.6.1-4FD1C5)
 ![Flutter](https://img.shields.io/badge/Flutter-3.35%2B-02569B?logo=flutter&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-11%2B-3DDC84?logo=android&logoColor=white)
 ![Robot](https://img.shields.io/badge/robot-ROS%202%20Humble-22314E?logo=ros&logoColor=white)
