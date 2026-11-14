@@ -10,7 +10,7 @@ import '../widgets/hud.dart';
 import 'drive_screen.dart';
 import 'settings_screen.dart';
 
-const appVersion = '2.6.1'; // the version in pubspec.yaml (test/version_test.dart)
+const appVersion = '2.7.0'; // the version in pubspec.yaml (test/version_test.dart)
 
 /// Robot picker: the main robot from the settings plus every robot that answers on the LAN.
 class ConnectScreen extends StatefulWidget {

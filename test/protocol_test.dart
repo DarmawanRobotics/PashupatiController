@@ -203,6 +203,25 @@ void main() {
     expect(PeopleStatus.fromJson({'state': 'loading'})!.count, isNull);
   });
 
+  test('the trip meter in the state', () {
+    final trip = RobotState.fromJson({
+      'trip': {'m': 1234.5, 's': 3725, 'v': 0.41, 'avg': 0.38, 'max': 0.92, 'since': 1794550000},
+    }).trip!;
+    expect(trip.distance, 1234.5);
+    expect(trip.movingSeconds, 3725);
+    expect(trip.speed, 0.41);
+    expect(trip.average, 0.38);
+    expect(trip.top, 0.92);
+    expect(trip.since, DateTime.fromMillisecondsSinceEpoch(1794550000000));
+    expect(RobotState.fromJson({}).trip, isNull); // a robot without the trip meter
+    expect(TripStatus.fromJson({'m': 'far', 'v': 0.1}), isNull);
+    expect(TripStatus.fromJson({'m': 2.0, 'v': 0.0})!.since, isNull);
+    expect(formatDistance(12.34), '12.3 m');
+    expect(formatDistance(1234.5), '1.23 km');
+    expect(formatDuration(75), '1:15');
+    expect(formatDuration(3725), '1:02:05');
+  });
+
   test('inspection models and their names', () {
     final models = InspectionModel.listFromJson([
       {'name': 'moondream:latest', 'installed': true, 'active': true},

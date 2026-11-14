@@ -49,6 +49,9 @@ class AppSettings extends ChangeNotifier {
   /// The robot computer's CPU, GPU and memory use on the drive screen (for development).
   bool get showLoad => _prefs.getBool('show_load') ?? true;
 
+  /// The robot's trip meter (distance, speeds) on the drive screen.
+  bool get showTrip => _prefs.getBool('show_trip') ?? true;
+
   /// Inspection time of a stop point marked from the handheld, seconds.
   double get stopDwell => _prefs.getDouble('dwell') ?? 10;
 
@@ -69,6 +72,7 @@ class AppSettings extends ChangeNotifier {
     String? mainView,
     bool? deadman,
     bool? showLoad,
+    bool? showTrip,
     double? stopDwell,
     int? gear,
   }) async {
@@ -84,6 +88,7 @@ class AppSettings extends ChangeNotifier {
       if (mainView != null) _prefs.setString('main_view', mainView),
       if (deadman != null) _prefs.setBool('deadman', deadman),
       if (showLoad != null) _prefs.setBool('show_load', showLoad),
+      if (showTrip != null) _prefs.setBool('show_trip', showTrip),
       if (stopDwell != null) _prefs.setDouble('dwell', stopDwell),
       if (gear != null) _prefs.setInt('gear', _gear(gear)),
     ];
