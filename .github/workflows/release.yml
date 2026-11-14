@@ -1,0 +1,78 @@
+name: release
+
+# Push a tag v<version> (the version in pubspec.yaml) to publish a GitHub Release with the APK:
+#   git tag v2.6.2 && git push origin v2.6.2
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release and upload the APK
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # a release named v2.6.2 must carry the app that says 2.6.2 in its settings
+      - name: Tag matches pubspec.yaml
+        id: version
+        run: |
+          version=$(sed -n 's/^version: *\([^+ ]*\).*/\1/p' pubspec.yaml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error title=Version mismatch::tag $GITHUB_REF_NAME, pubspec.yaml version $version: bump the version or fix the tag"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+
+      # the release key from the repository secrets (README "Releases"); without it the APK is
+      # signed with this runner's debug key and must be installed over an uninstalled app
+      - name: Release key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning title=No release key::ANDROID_KEYSTORE_BASE64 is not set: signed with a debug key, the app cannot be updated in place"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter build apk --release
+          apk="pashupati-controller-${{ steps.version.outputs.version }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      # a re-run of the same tag replaces the files of its release
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          files=(pashupati-controller-"$VERSION".apk pashupati-controller-"$VERSION".apk.sha256)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "PashupatiController $VERSION" --generate-notes
+          fi

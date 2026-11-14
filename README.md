@@ -73,7 +73,18 @@ and takes the video over WebRTC. There is no ROS on the handheld.
 
 ## Install
 
-**From CI (no Flutter needed).** Every push to `main` builds a release APK.
+**From a release (no Flutter needed).** Open
+[Releases](https://github.com/DarmawanRobotics/PashupatiController/releases/latest), download
+`pashupati-controller-<version>.apk` on the handheld and open it (allow installing from the
+browser or file manager once), or from a computer:
+
+```bash
+adb install -r pashupati-controller-2.6.2.apk     # -r: update in place, settings kept
+```
+
+Releases are signed with one release key, so a newer release installs over an older one.
+
+**From CI.** Every push to `main` also builds a release APK.
 
 1. Open [Actions](https://github.com/DarmawanRobotics/PashupatiController/actions/workflows/ci.yml)
    and pick the latest green run.
@@ -94,9 +105,9 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk     # or: flutter run --release
 ```
 
-APKs built locally are signed with your debug key, and the CI ones with the CI key. Android only
-updates an app in place with the same key, so when you switch between the two, uninstall first.
-Uninstalling clears the app's settings.
+APKs built locally are signed with your debug key, releases and CI ones with the release key.
+Android only updates an app in place with the same key, so when you switch between the two,
+uninstall first. Uninstalling clears the app's settings.
 
 **First connection.** On the start screen, tap the version three times to open the connection
 settings. Enter the robot address (default `192.168.234.234:9870`) and its token. Robots on the
@@ -172,8 +183,26 @@ flutter test                  # protocol, widgets and pages at Retroid Pocket si
 ```
 
 CI runs on every push. It analyzes the code, runs the tests and turns failures into annotations,
-reports formatting, and builds the release APK. Bump `version` in `pubspec.yaml` with every
-release. When a dependency changes, commit the `pubspec.lock` that `flutter pub get` writes.
+reports formatting, and builds the release APK. When a dependency changes, commit the
+`pubspec.lock` that `flutter pub get` writes.
+
+### Releases
+
+Bump `version` in `pubspec.yaml` (the name and the `+` build number), merge it to `main`, then tag
+that commit with the same version:
+
+```bash
+git tag v2.6.2 && git push origin v2.6.2
+```
+
+The `release` workflow tests, builds and publishes `pashupati-controller-2.6.2.apk` (and its
+SHA-256) as the GitHub Release `v2.6.2`. A tag that differs from `pubspec.yaml` fails the run.
+
+The release key lives in four repository secrets (Settings → Secrets and variables → Actions):
+`ANDROID_KEYSTORE_BASE64` (the keystore, `base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without them the APK is signed with a debug key
+that changes every run. Keep the keystore file and its passwords outside the repository: losing
+them means every handheld has to uninstall the app once to take a new key.
 
 Barlow Semi Condensed is under the SIL Open Font License (`assets/fonts/OFL.txt`). The app is
 released under the [Apache License 2.0](LICENSE).
