@@ -15,6 +15,7 @@ import '../theme.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/glance.dart';
 import '../widgets/hud.dart';
+import '../widgets/trip_panel.dart';
 import '../widgets/map_view.dart';
 import 'patrol_screen.dart';
 import 'routes_screen.dart';
@@ -226,6 +227,12 @@ class _DriveScreenState extends State<DriveScreen> {
       );
     }
     return result;
+  }
+
+  /// Holding the trip panel: the robot starts its trip meter again from zero.
+  void _resetTrip() {
+    HapticFeedback.mediumImpact();
+    _run('trip_reset', label: s.t('trip_reset'));
   }
 
   void _estop() {
@@ -515,7 +522,7 @@ class _DriveScreenState extends State<DriveScreen> {
           // the map listens to the viewport itself: a pinch does not rebuild the whole screen
           child: ListenableBuilder(listenable: _viewport, builder: (context, _) => _viewButtons()),
         ),
-        // last inspection, people in view and the robot's load, above the toolbar
+        // last inspection, people in view, the robot's load and its trip, above the toolbar
         if (size.height - (top + insetHeight + 52) - 70 > 30)
           Positioned(
             key: const ValueKey('glance'),
@@ -527,11 +534,25 @@ class _DriveScreenState extends State<DriveScreen> {
               alignment: Alignment.topLeft,
               child: SingleChildScrollView(
                 physics: const NeverScrollableScrollPhysics(),
-                child: GlancePanel(
-                  state: state,
-                  language: s.settings.language,
-                  showLoad: s.settings.showLoad,
-                  onTap: (client.welcome?.has('inspection_set') ?? false) ? _openPatrol : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GlancePanel(
+                      state: state,
+                      language: s.settings.language,
+                      showLoad: s.settings.showLoad,
+                      onTap: (client.welcome?.has('inspection_set') ?? false) ? _openPatrol : null,
+                    ),
+                    if (s.settings.showTrip && state.trip != null) ...[
+                      const SizedBox(height: 6),
+                      TripPanel(
+                        trip: state.trip!,
+                        language: s.settings.language,
+                        onReset: (client.welcome?.has('trip_reset') ?? false) ? _resetTrip : null,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

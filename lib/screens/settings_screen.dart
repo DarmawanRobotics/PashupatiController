@@ -154,6 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         _switch(t('lidar_on_map'), _settings.lidar, (value) => _settings.update(lidar: value)),
         _switch(t('show_load'), _settings.showLoad, (value) => _settings.update(showLoad: value)),
+        _switch(t('show_trip'), _settings.showTrip, (value) => _settings.update(showTrip: value)),
         _choice(
           t('language'),
           SegmentedButton<String>(

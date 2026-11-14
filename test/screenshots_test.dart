@@ -135,6 +135,7 @@ Map<String, dynamic> _state({
   },
   'people': {'on': true, 'state': 'running', 'count': 2, 'ms': 18, 'backend': 'onnxruntime-cuda'},
   'speed': {'target': 0.4, 'min': 0.1, 'max': 0.6},
+  'trip': {'m': 1284.6, 's': 3412, 'v': 0.38, 'avg': 0.36, 'max': 0.61, 'since': 1794540000},
 };
 
 /// The robot's answers to the pages' own commands.

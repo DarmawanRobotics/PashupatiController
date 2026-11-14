@@ -23,6 +23,7 @@ const pashupatiCommands = {
   'inspection_categories',
   'people_set',
   'nav_speed',
+  'trip_reset',
 };
 
 double? _num(Object? value) => value is num && value.isFinite ? value.toDouble() : null;
@@ -191,6 +192,7 @@ class RobotState {
     this.people,
     this.load,
     this.speed,
+    this.trip,
   });
 
   factory RobotState.fromJson(Map<String, dynamic> json) {
@@ -232,6 +234,7 @@ class RobotState {
       people: PeopleStatus.fromJson(json['people']),
       load: SystemLoad.fromJson(health),
       speed: PatrolSpeed.fromJson(json['speed']),
+      trip: TripStatus.fromJson(json['trip']),
     );
   }
 
@@ -272,6 +275,10 @@ class RobotState {
 
   /// Patrol speed of the navigation; null when navigation does not run.
   final PatrolSpeed? speed;
+
+  /// Distance and speeds since the last trip_reset, counted on the robot; null on a robot
+  /// without the trip meter.
+  final TripStatus? trip;
 
   bool get remote => mode == 'remote';
   bool get localized => localization.isNotEmpty && localization != 'none';
@@ -463,6 +470,65 @@ class PatrolSpeed {
   final double target;
   final double min;
   final double max;
+}
+
+/// `state.trip`: distance and speeds since the last `trip_reset`, counted on the robot from its
+/// LiDAR odometry (dharma_odometry), also while no handheld is connected.
+class TripStatus {
+  const TripStatus({
+    required this.distance,
+    required this.movingSeconds,
+    required this.speed,
+    required this.average,
+    required this.top,
+    this.since,
+  });
+
+  /// Null unless the distance and the speeds are numbers.
+  static TripStatus? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final distance = _num(json['m']);
+    final speed = _num(json['v']);
+    if (distance == null || speed == null) return null;
+    final since = _num(json['since']);
+    return TripStatus(
+      distance: distance,
+      movingSeconds: _num(json['s']) ?? 0,
+      speed: speed,
+      average: _num(json['avg']) ?? 0,
+      top: _num(json['max']) ?? 0,
+      since: since != null && since > 0
+          ? DateTime.fromMillisecondsSinceEpoch((since * 1000).round())
+          : null,
+    );
+  }
+
+  /// m travelled.
+  final double distance;
+
+  /// s spent moving.
+  final double movingSeconds;
+
+  /// m/s now, average while moving, and the highest.
+  final double speed;
+  final double average;
+  final double top;
+
+  /// When the trip was last reset.
+  final DateTime? since;
+}
+
+/// "12.3 m" below a kilometre, "1.24 km" above.
+String formatDistance(double metres) =>
+    metres < 1000 ? '${metres.toStringAsFixed(1)} m' : '${(metres / 1000).toStringAsFixed(2)} km';
+
+/// "m:ss" below an hour, "h:mm:ss" above.
+String formatDuration(double seconds) {
+  final s = seconds.floor();
+  final h = s ~/ 3600;
+  final m = (s % 3600) ~/ 60;
+  final rest = (s % 60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$rest' : '$m:$rest';
 }
 
 /// `state.people`: the robot's person detection (person_detector_node).
