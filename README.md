@@ -9,7 +9,7 @@ them, watch through their camera, teach routes and run their AI inspection, from
 Pocket 4 or any Android device in landscape.**
 
 [![CI](https://github.com/DarmawanRobotics/PashupatiController/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DarmawanRobotics/PashupatiController/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-2.7.0-4FD1C5)
+![Version](https://img.shields.io/badge/version-2.8.0-4FD1C5)
 ![Flutter](https://img.shields.io/badge/Flutter-3.35%2B-02569B?logo=flutter&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-11%2B-3DDC84?logo=android&logoColor=white)
 ![Robot](https://img.shields.io/badge/robot-ROS%202%20Humble-22314E?logo=ros&logoColor=white)
@@ -66,6 +66,8 @@ and takes the video over WebRTC. There is no ROS on the handheld.
 - Battery, link quality, protective field, health and the localization source (identity, tag or
   pose).
 - The robot's CPU, GPU and RAM use and its temperature, at a glance, for development.
+- The robot's own internet (a ping through its modem, every 5 s): **Internet 38 ms**, yellow
+  when pings get lost or slow, **Internet offline** in red. Needs Pashupati with `state.net`.
 - Trip meter under the glance panel: distance and moving time, speed now, average and top speed
   since the last reset. The robot counts (also with no handheld connected) and keeps it across
   restarts; hold the panel to reset it to zero. Needs Pashupati with `odometry/trip`.
@@ -82,7 +84,7 @@ and takes the video over WebRTC. There is no ROS on the handheld.
 browser or file manager once), or from a computer:
 
 ```bash
-adb install -r pashupati-controller-2.7.0.apk     # -r: update in place, settings kept
+adb install -r pashupati-controller-2.8.0.apk     # -r: update in place, settings kept
 ```
 
 Releases are signed with one release key, so a newer release installs over an older one.
@@ -195,11 +197,11 @@ Bump `version` in `pubspec.yaml` (the name and the `+` build number), merge it t
 that commit with the same version:
 
 ```bash
-git tag v2.7.0 && git push origin v2.7.0
+git tag v2.8.0 && git push origin v2.8.0
 ```
 
-The `release` workflow tests, builds and publishes `pashupati-controller-2.7.0.apk` (and its
-SHA-256) as the GitHub Release `v2.7.0`. A tag that differs from `pubspec.yaml` fails the run.
+The `release` workflow tests, builds and publishes `pashupati-controller-2.8.0.apk` (and its
+SHA-256) as the GitHub Release `v2.8.0`. A tag that differs from `pubspec.yaml` fails the run.
 
 The release key lives in four repository secrets (Settings → Secrets and variables → Actions):
 `ANDROID_KEYSTORE_BASE64` (the keystore, `base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD`,

@@ -193,6 +193,7 @@ class RobotState {
     this.load,
     this.speed,
     this.trip,
+    this.net,
   });
 
   factory RobotState.fromJson(Map<String, dynamic> json) {
@@ -235,6 +236,7 @@ class RobotState {
       load: SystemLoad.fromJson(health),
       speed: PatrolSpeed.fromJson(json['speed']),
       trip: TripStatus.fromJson(json['trip']),
+      net: NetStatus.fromJson(json['net']),
     );
   }
 
@@ -279,6 +281,9 @@ class RobotState {
   /// Distance and speeds since the last trip_reset, counted on the robot; null on a robot
   /// without the trip meter.
   final TripStatus? trip;
+
+  /// The robot's own internet (a ping through its modem); null when it does not check.
+  final NetStatus? net;
 
   bool get remote => mode == 'remote';
   bool get localized => localization.isNotEmpty && localization != 'none';
@@ -589,6 +594,35 @@ class PeopleStatus {
   /// What runs the model, e.g. onnxruntime-cpu.
   final String backend;
   final String error;
+}
+
+/// The robot's internet check (`state.net`): a ping of [target] through its modem.
+class NetStatus {
+  const NetStatus({required this.online, this.ms, this.loss = 0, this.target = ''});
+
+  /// Null unless the check reports whether the robot is online.
+  static NetStatus? fromJson(Object? json) {
+    if (json is! Map || json['online'] is! bool) return null;
+    return NetStatus(
+      online: json['online'] as bool,
+      ms: _num(json['ms']),
+      loss: _num(json['loss']) ?? 0,
+      target: _str(json['target']),
+    );
+  }
+
+  /// One of the last two pings was answered.
+  final bool online;
+
+  /// Round trip of the last answer in ms; null offline.
+  final double? ms;
+
+  /// Share of the last pings that got no answer, in percent.
+  final double loss;
+  final String target;
+
+  /// Online, but slow or losing a quarter of the pings.
+  bool get poor => online && (loss >= 25 || (ms ?? 0) > 300);
 }
 
 /// The robot computer's load (`state.health`): percentages, memory in GB, hottest zone in C.

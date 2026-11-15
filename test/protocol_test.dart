@@ -203,6 +203,20 @@ void main() {
     expect(PeopleStatus.fromJson({'state': 'loading'})!.count, isNull);
   });
 
+  test('the internet check in the state', () {
+    final net = RobotState.fromJson({
+      'net': {'online': true, 'ms': 38.4, 'loss': 8, 'target': '8.8.8.8', 'age': 2.0},
+    }).net!;
+    expect(net.online, isTrue);
+    expect(net.ms, 38.4);
+    expect(net.loss, 8);
+    expect(net.poor, isFalse);
+    expect(RobotState.fromJson({'net': null}).net, isNull);
+    expect(RobotState.fromJson({}).net, isNull);
+    expect(RobotState.fromJson({'net': {'ms': 3}}).net, isNull);
+    expect(NetStatus.fromJson({'online': true, 'ms': 450})!.poor, isTrue);
+  });
+
   test('the trip meter in the state', () {
     final trip = RobotState.fromJson({
       'trip': {'m': 1234.5, 's': 3725, 'v': 0.41, 'avg': 0.38, 'max': 0.92, 'since': 1794550000},

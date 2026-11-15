@@ -82,6 +82,21 @@ void main() {
     expect(text.style?.color, Palette.stop);
   });
 
+  testWidgets("the robot's internet: online, losing pings, offline", (tester) async {
+    await show(tester, {
+      'net': {'online': true, 'ms': 38.4, 'loss': 0, 'target': '8.8.8.8', 'age': 1.2},
+    });
+    expect(find.text('Internet 38 ms'), findsOneWidget);
+    await show(tester, {
+      'net': {'online': true, 'ms': 61.0, 'loss': 33, 'target': '8.8.8.8'},
+    });
+    expect(find.text('Internet 61 ms, 33% hilang'), findsOneWidget);
+    const offline = {'online': false, 'ms': null, 'loss': 100, 'target': '8.8.8.8'};
+    await show(tester, {'net': offline}, showLoad: false);
+    final text = tester.widget<Text>(find.text('Internet putus'));
+    expect(text.style?.color, Palette.stop);
+  });
+
   testWidgets('without inspection, people or load figures nothing shows', (tester) async {
     await show(tester, {
       'health': {'ok': true, 'issues': []},
