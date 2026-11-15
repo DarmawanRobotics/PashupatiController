@@ -8,8 +8,8 @@ import '../theme.dart';
 import 'hud.dart';
 
 /// What the robot sees and how hard it works, at a glance under the small view: the last
-/// inspection (clear or a finding), the people in view and the computer's load. Tap it for the
-/// inspection page with the details.
+/// inspection (clear or a finding), the people in view, the computer's load and the robot's
+/// internet. Tap it for the inspection page with the details.
 class GlancePanel extends StatelessWidget {
   const GlancePanel({
     super.key,
@@ -31,11 +31,13 @@ class GlancePanel extends StatelessWidget {
     final inspection = state.inspection;
     final people = state.people;
     final load = state.load;
+    final net = state.net;
     final rows = <Widget>[
       if (inspection != null) _inspectionRow(inspection),
       if (inspection != null && inspection.queue > 0) _queueRow(inspection),
       if (people != null) _peopleRow(people),
       if (showLoad && load != null) ..._loadRows(load),
+      if (net != null) _netRow(net),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
     return GestureDetector(
@@ -134,6 +136,22 @@ class GlancePanel extends StatelessWidget {
         strong: memory == 2,
       ),
     ];
+  }
+
+  Widget _netRow(NetStatus net) {
+    if (!net.online) {
+      return _row(Icons.public_off_rounded, Palette.stop, t('net_offline'), strong: true);
+    }
+    final ms = (net.ms ?? 0).round();
+    if (net.loss >= 25) {
+      final text = t('net_lossy', {'ms': ms, 'loss': net.loss.round()});
+      return _row(Icons.public_rounded, Palette.caution, text);
+    }
+    return _row(
+      Icons.public_rounded,
+      net.poor ? Palette.caution : Palette.muted,
+      t('net_online', {'ms': ms}),
+    );
   }
 
   String _withAge(String what, int? age) {
