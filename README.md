@@ -66,6 +66,8 @@ and takes the video over WebRTC. There is no ROS on the handheld.
 - Battery, link quality, protective field, health and the localization source (identity, tag or
   pose).
 - The robot's CPU, GPU and RAM use and its temperature, at a glance, for development.
+- The robot's own internet (a ping through its modem, every 5 s): **Internet 38 ms**, yellow
+  when pings get lost or slow, **Internet offline** in red. Needs Pashupati with `state.net`.
 - Trip meter under the glance panel: distance and moving time, speed now, average and top speed
   since the last reset. The robot counts (also with no handheld connected) and keeps it across
   restarts; hold the panel to reset it to zero. Needs Pashupati with `odometry/trip`.
